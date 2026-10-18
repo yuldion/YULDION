@@ -17,8 +17,12 @@ def generate(config, messages):
     headers = {'Content-Type': 'application/json'}
     if config.get('api_key_env'):
         headers['Authorization'] = 'Bearer ' + os.environ[config['api_key_env']]
+    response_format = {'type': 'json_object'}
+    if config.get('response_schema') is not None:
+        response_format = {'type':'json_schema', 'json_schema':{
+            'name':'actor_response','strict':True,'schema':config['response_schema']}}
     request = Request(endpoint, data=json.dumps({'model': model, 'messages': messages,
-        'temperature': 0.2, 'max_tokens': 1800, 'response_format': {'type': 'json_object'}}).encode(), headers=headers)
+        'temperature': 0.2, 'max_tokens': 1800, 'response_format': response_format}).encode(), headers=headers)
     # No redirects: never forward an authorization header to another host.
     from urllib.request import build_opener, HTTPRedirectHandler
     class NoRedirect(HTTPRedirectHandler):
