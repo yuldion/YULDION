@@ -126,7 +126,15 @@ class ChatReasoner:
         if operation == 'read_text':
             observations=call_options['response_schema']['properties']['observations']
             observations['minItems']=2
-            observations['items']['properties']['quote']={'type':'string','maxLength':max(1,min(24,len(context.script.text)//2))}
+            limit=max(1,min(24,len(context.script.text)//2))
+            words=list(re.finditer(r"\w+(?:['’]\w+)?",context.script.text))
+            spans={context.script.text[left.start():right.end()]
+                   for i,left in enumerate(words) for right in words[i:i+4]
+                   if right.end()-left.start()<=limit}
+            if len(spans)<2:
+                raise ValueError('At least two distinct textual spans are required')
+            # Grammar restricts copying to original substrings; it does not choose readings.
+            observations['items']['properties']['quote']={'type':'string','enum':sorted(spans)}
         if operation == 'propose' and context.current_action is None:
             call_options['response_schema']['properties']['basis']={
                 'type':'array','minItems':1,'maxItems':1,
