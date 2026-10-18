@@ -24,7 +24,7 @@ outcome stays unknown. Never impose a fixed fear/volume/style prefix. Output JSO
 SCHEMAS = {
  'read_text': {'observations':[{'quote':'exact current-script substring','reading':'what the words imply, as a hypothesis'}],
                'not_established':'what the current wording does not establish'},
- 'propose': {'textual_support':[{'quote':'exact substring from textual reading','interpretation':'word-specific reading','intended_change':'same desired_change as action'}], 'decision':'initialize|retain|change','view':'interpretation grounded in current words',
+ 'propose': {'textual_support':[{'quote':'exact substring from textual reading','interpretation':'word-specific reading','intention_link':'how this reading supports the single chosen action.desired_change'}], 'decision':'initialize|retain|change','view':'interpretation grounded in current words',
              'basis':['current script observation ID'],
              'action':{'target_id':'scene target','desired_change':'intention toward target',
                        'tactic':'playable action','observable_test':'what could be observed'},
@@ -43,7 +43,7 @@ STRINGS={'type':'array','items':STRING}
 ACTION_SCHEMA=object_schema({k:STRING for k in ('target_id','desired_change','tactic','observable_test')})
 TRIGGER_SCHEMA=object_schema({'kind':{'type':'string','enum':['none','external_event','discovery']},
     'basis':STRINGS, **{k:STRING for k in ('prior_assumption','new_insight','why_action_insufficient')}})
-SUPPORT_SCHEMA=object_schema({k:STRING for k in ('quote','interpretation','intended_change')})
+SUPPORT_SCHEMA=object_schema({k:STRING for k in ('quote','interpretation','intention_link')})
 JSON_SCHEMAS={
  'read_text':object_schema({'observations':{'type':'array','minItems':1,'maxItems':4,
      'items':object_schema({'quote':STRING,'reading':STRING})},'not_established':STRING}),
@@ -87,7 +87,8 @@ class ChatReasoner:
                 ' Derive your interpretation and desired_change from these quoted words; the scene is'
                 ' secondary context, not evidence for the meaning of a line. Do not just repeat its goals.'
                 ' For each textual_support item quote an exact span from text_reading observations,'
-                ' explain its interpretation and set intended_change exactly equal to action.desired_change.'
+                ' explain its interpretation and in intention_link explain how it supports the single action.desired_change.'
+                ' Do not introduce a second intention or just copy the desired_change into every link.'
                 ' View must explain the wording; exact quotations are stored separately in textual_support.'
                 ' Desired_change must say what you want the target to consider/do now, not describe the speaker.')
             instructions += (' Explain the meaning and relationship implied by the current words in one or two'
@@ -188,11 +189,11 @@ class ChatReasoner:
             raise ValueError('Text-to-intention support required')
         known_quotes={item['quote'] for item in observations}
         for item in support:
-            if not isinstance(item,dict) or set(item)!={'quote','interpretation','intended_change'}:
+            if not isinstance(item,dict) or set(item)!={'quote','interpretation','intention_link'}:
                 raise ValueError('Invalid text-to-intention support')
             if (text(item['quote']) not in known_quotes
                     or text(item['interpretation']).strip()==item['quote'].strip()
-                    or item['intended_change']!=action.desired_change):
+                    or not text(item['intention_link']).strip()):
                 raise ValueError('Support must connect observed wording to the chosen intention')
         text(a['view'])
         normalize=lambda value: re.sub(r'[^\w]+','',value.lower())

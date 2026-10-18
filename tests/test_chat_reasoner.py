@@ -19,7 +19,7 @@ class ChatReasonerTest(TestCase):
     def answer(self):
         return {'decision':'initialize','view':'to sleep is proposed as an end to disturbance, not established fact.',
                 'textual_support':[{'quote':'to sleep','interpretation':'Sleep is suggested as relief.',
-                                    'intended_change':'consider the proposal'}],
+                                    'intention_link':'The offered comparison invites the target to consider the proposal.'}],
                 'basis':['script:0'],'action':{'target_id':'self','desired_change':'consider the proposal',
                 'tactic':'invite','observable_test':'an actual response if observed'},
                 'trigger':{'kind':'none','basis':[],'prior_assumption':'','new_insight':'','why_action_insufficient':''}}
@@ -59,7 +59,7 @@ class ChatReasonerTest(TestCase):
         for field in ('view','intention'):
             a=self.answer()
             if field=='view':a['view']=self.context().script.text
-            else:a['textual_support'][0]['intended_change']='unrelated goal'
+            else:a['textual_support'][0]['intention_link']=''
             with patch('yuldion.adapters.chat_reasoner.generate',side_effect=[(self.reading(),{}),(a,{})]):
                 with self.assertRaises(ValueError):ChatReasoner({}).propose(self.context(),Event())
 

@@ -40,8 +40,10 @@ alone do not establish. These are inspectable analysis outputs, not hidden thoug
 
 A separate propose call receives those readings and the scene as secondary context.
 It must return `textual_support` connecting an exact observed quote to an interpretation
-and the same desired change selected by the action. Python validates quote attribution,
-matching intention, a quoted view, and rejects a view that only copies the whole line.
+and an explicit explanation of its link to the single desired change selected by the action.
+Python validates exact quote attribution, nonempty support explanations and rejects a view
+that only copies the whole line. It does not require repeated intention strings or prove
+semantic agreement; the audit and human review assess that.
 The normal engine action/continuity gates remain unchanged. A following audit call
 receives both the original text reading and support; its verdict is recorded unchanged.
 Semantic entailment is still a fallible model/human judgment, not proven by JSON checks.
