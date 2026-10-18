@@ -29,6 +29,9 @@ def main(argv=None):
         try:
             proposal=reasoner.propose(context,Event())
             record['proposal']=asdict(proposal)
+            key=(context.scene_hash,context.script.id,context.script.text)
+            record['text_reading']=reasoner.readings[key]
+            record['textual_support']=reasoner.supports[key]
             record['status']='generated'
             if proposal.decision!='initialize' or not proposal.action or script.id not in proposal.basis:
                 raise ValueError('First action must initialize and cite current line')

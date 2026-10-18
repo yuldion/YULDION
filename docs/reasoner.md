@@ -30,3 +30,19 @@ alone does not guarantee a usable pose or gaze direction.
 
 Local tests use test-only responses. Real inference requires an available endpoint
 and has not been established merely by passing these tests.
+
+## Text-first grounding
+
+The reasoner first calls `read_text` with **only the current script ID and words**.
+It receives no authored situation, goal, relationship or later lines in that call.
+The model returns brief exact quotes, their proposed readings and what the words
+alone do not establish. These are inspectable analysis outputs, not hidden thoughts.
+
+A separate propose call receives those readings and the scene as secondary context.
+It must return `textual_support` connecting an exact observed quote to an interpretation
+and the same desired change selected by the action. Python validates quote attribution,
+matching intention, a quoted view, and rejects a view that only copies the whole line.
+The normal engine action/continuity gates remain unchanged. A following audit call
+receives both the original text reading and support; its verdict is recorded unchanged.
+Semantic entailment is still a fallible model/human judgment, not proven by JSON checks.
+The raw reading and support are retained in first-line probe output and model-call records.
