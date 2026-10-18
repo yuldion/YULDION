@@ -20,7 +20,7 @@
 | 구성 | 포함된 것 | 남은 연결/검증 |
 |---|---|---|
 | 배우 엔진 | 첫 대사 전 계획, 목표·관계 유지, 행동 전환 검사, 공통 오디오 시계 | 실제 해석·음성·얼굴 모델 통합 및 연기 평가 |
-| 해석 모델 | propose/audit/perform 계약 | 실제 추론 어댑터·모델 선택/연결 |
+| 해석 모델 | chat-completions 추론 어댑터·첫 대사 전용 probe | 실제 모델 서버 연결·생성 검수 |
 | 음성 | 지연 로딩 CosyVoice3 포트 | 선택 모델·기준 음성·환경 연결, 실제 청취 |
 | 얼굴 | 현재 음성·motor·gaze를 요구하는 backend 포트 | 의도→포즈 변환·실제 renderer backend 구현/연결 |
 | 선택 도구 | 행동동사 분석·항목별 사용자 확정 CLI | 사용자가 지정한 언어모델 서버 연결 |
@@ -62,7 +62,7 @@ yuldion inspect outputs/<run-id>/events.jsonl
 모델 교체는 실행 사이에 설정으로 적용합니다. 현재 학습 중인 파일을 수정하거나
 실행 중 가중치를 자동 교체하지 않습니다.
 
-[어댑터 계약](docs/adapters.md) · [음성/얼굴 포트와 미검증 범위](docs/model-ports.md) ·
+[해석 모델 연결](docs/reasoner.md) · [어댑터 계약](docs/adapters.md) · [음성/얼굴 포트와 미검증 범위](docs/model-ports.md) ·
 [아키텍처](docs/architecture.md) · [RunPod 실행](docs/runpod.md)
 
 ## 배우의 연속성
