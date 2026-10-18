@@ -35,6 +35,12 @@ class ChatReasonerTest(TestCase):
         self.assertNotIn('seek grounds',first)
         self.assertNotIn('scene_goal',first)
         self.assertNotIn('self-address',first)
+        second=generate.call_args_list[1].args[1][1]['content']
+        self.assertNotIn('seek grounds',second)
+        self.assertNotIn('consider relief',second)
+        options=generate.call_args_list[0].args[0]
+        quotes=options['response_schema']['properties']['observations']['items']['properties']['quote']['enum']
+        self.assertEqual(set(quotes),{'To die','to sleep','No more'})
 
     def test_invalid_evidence_rejected_and_raw_response_kept(self):
         reasoner=ChatReasoner({}); answer=self.answer();answer['basis']=['future-line']
@@ -73,3 +79,16 @@ class ChatReasonerTest(TestCase):
         payload=__import__('json').loads(generate.call_args.args[1][1]['content'])
         self.assertEqual(payload['text_reading'],self.reading())
         self.assertEqual(payload['textual_support'],self.answer()['textual_support'])
+
+    def test_prepared_goal_copy_is_rejected(self):
+        a=self.answer();a['action']['desired_change']=self.context().scene.scene_goal
+        with patch('yuldion.adapters.chat_reasoner.generate',side_effect=[(self.reading(),{}),(a,{})]):
+            with self.assertRaisesRegex(ValueError,'prepared scene goal'):
+                ChatReasoner({}).propose(self.context(),Event())
+
+    def test_local_timeout_is_bounded(self):
+        from yuldion.inference import generate
+        for timeout in (0,181,float('nan'),True):
+            with self.assertRaises(ValueError):
+                generate({'endpoint':'http://localhost:8000/v1/chat/completions',
+                          'model':'test','request_timeout_seconds':timeout},[])

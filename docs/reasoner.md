@@ -29,7 +29,10 @@ Motor values require agreement with the selected face backend; unconstrained JSO
 alone does not guarantee a usable pose or gaze direction.
 
 Local tests use test-only responses. Real inference requires an available endpoint
-and has not been established merely by passing these tests.
+and is verified separately from these tests. A bounded local Qwen3-8B Q4_K_M /
+llama.cpp b11718 first-line rerun on 2026-10-18 completed quote checks and same-model
+audit with grounded=true; this is not independent human validation or evidence of
+performance quality. The voice/face adapters were not loaded in that probe.
 
 ## Text-first grounding
 
@@ -56,3 +59,12 @@ in audit/perform. Text-only reading requires at least two distinct short quotati
 The first proposal's structured basis is constrained to the current script ID and
 verbatim reuse of a prepared scene goal as the desired change is rejected. These
 mechanical checks still do not establish semantic correctness.
+
+`request_timeout_seconds` defaults to 60 and can be configured between 1 and 180
+seconds for slower local inference. The actual text-grounded run used 120 seconds
+per call, with an external 360-second probe bound and owned-server cleanup.
+The selected quotes were “To die” and “to sleep”; the model generated “Consider the
+possibility of death as a resolution to suffering” as the desired change. “Suffering”
+is an inferred reading, not a directly quoted fact; “No more” was not separately
+analyzed by this response. Human review remains necessary. Prior failures were retained,
+including invalid quotations, goal copying, redundant support checks and a timeout.
