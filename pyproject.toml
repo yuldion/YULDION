@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yuldion-engine"
 version = "0.1.0"
-description = "Headless, adapter-driven AI actor engine"
+description = "Independent headless AI actor engine with replaceable model adapters"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -13,7 +13,7 @@ dependencies = []
 
 [project.scripts]
 yuldion = "yuldion.cli:main"
-yuldion-analyze = "yuldion.analysis.__main__:main"
+yuldion-action-verbs = "yuldion.tools.action_verbs.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

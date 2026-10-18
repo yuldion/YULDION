@@ -1,6 +1,9 @@
-# 단계별 대본 분석
+# 선택 도구: 행동동사 분석
 
-YULDION의 음성·얼굴 실행과 분리된 CLI입니다. 사용자가 정한 행동 동사 분석
+YULDION 핵심 엔진과 별도로 실행하는 선택 CLI입니다. 기존 script-analyzer 저장소와
+독립적으로 관리하며 해당 저장소를 import하거나 연결하지 않습니다. 행동동사 분석은
+대본을 다루는 하나의 방법이고 YULDION 전체의 필수 프로세스는 아닙니다.
+이 도구의 승인 단계는 리허설용이며 실시간 배우 엔진을 단계마다 정지시키지 않습니다. 사용자가 정한 행동 동사 분석
 순서를 따릅니다. 모델은 한 번에 한 항목만 제안하며, 사람이 명시적으로 확정하기
 전에는 다음 항목을 요청할 수 없습니다. 모델 가중치나 고정 햄릿 해설은 포함하지
 않습니다. 모델의 실제 의미 해석 능력과 연기 품질은 별도로 검증해야 합니다.
@@ -14,11 +17,11 @@ Windows에서는 WSL을 사용하세요. 런타임은 Python 표준 라이브러
 python -m pip install -e .
 mkdir -p private
 # 학습·GPU 실행 없이 원문/진행 파일만 준비
-yuldion-analyze init --script examples/analysis-hamlet.json --state private/analysis.local.json
-yuldion-analyze status --state private/analysis.local.json
+yuldion-action-verbs init --script examples/action-verbs-hamlet.json --state private/analysis.local.json
+yuldion-action-verbs status --state private/analysis.local.json
 ```
 
-설치 없이 `PYTHONPATH=src python3 -m yuldion.analysis`로 같은 명령을 실행할 수 있습니다.
+설치 없이 `PYTHONPATH=src python3 -m yuldion.tools.action_verbs`로 같은 명령을 실행할 수 있습니다.
 `init`은 기존 파일을 덮어쓰지 않습니다. source hash가 바뀌면 기존 분석을 진행하지
 않습니다. 새 원문으로 새 분석 파일을 만드세요. 이전 미배포 schema v1 초안은
 지원하지 않으며 schema v2를 새로 초기화합니다.
@@ -46,7 +49,7 @@ yuldion-analyze status --state private/analysis.local.json
 ## 모델 연결과 한 항목 제안
 
 이미 사용자가 준비한 chat-completions 호환 서버를 지정합니다.
-`examples/analysis-model.template.json`을 Git 제외 경로에 복사해 실제 모델 ID와
+`examples/action-verbs-model.template.json`을 Git 제외 경로에 복사해 실제 모델 ID와
 endpoint를 설정하세요. endpoint는 완전한 `/v1/chat/completions` URL이어야 합니다.
 템플릿의 모델명은 자리표시자이며 실제 모델이 아닙니다. 로컬 모델 서버도 별도 준비가
 필요합니다. 이 프로그램은 모델 설치·다운로드·서버 실행·학습을 하지 않습니다.
@@ -54,11 +57,11 @@ API 키는 파일 대신 `api_key_env`가 가리키는 환경변수에 둡니다
 서버라면 `api_key_env` 항목을 지우세요.
 
 ```bash
-yuldion-analyze propose --state private/analysis.local.json --model-config private/model.local.json
+yuldion-action-verbs propose --state private/analysis.local.json --model-config private/model.local.json
 # 제안과 원문 근거를 읽고 명시적으로 확정
-yuldion-analyze review --state private/analysis.local.json --approve
+yuldion-action-verbs review --state private/analysis.local.json --approve
 # 또는 거절: 같은 항목에 머무름
-yuldion-analyze review --state private/analysis.local.json --reject
+yuldion-action-verbs review --state private/analysis.local.json --reject
 ```
 
 위 approve/reject는 둘 중 하나만 선택합니다. 수정할 경우 현재 pending의 `proposal`
@@ -80,8 +83,8 @@ JSON 응답 모드를 지원하는 endpoint가 필요합니다. 잘못된 응답
 가져올 수도 있습니다. 이것은 YULDION의 실제 추론 실행으로 기록하지 않습니다.
 
 ```bash
-yuldion-analyze prompt --state private/analysis.local.json --output private/prompt.local.json
-yuldion-analyze propose --state private/analysis.local.json --proposal-file private/proposal.local.json
+yuldion-action-verbs prompt --state private/analysis.local.json --output private/prompt.local.json
+yuldion-action-verbs propose --state private/analysis.local.json --proposal-file private/proposal.local.json
 ```
 
 응답 구조:
@@ -107,11 +110,11 @@ yuldion-analyze propose --state private/analysis.local.json --proposal-file priv
 자신의 관찰을 텍스트 파일에 적어 제출한 뒤, 그 입력도 별도로 확인·확정합니다.
 
 ```bash
-yuldion-analyze input --state private/analysis.local.json --text-file private/observation.txt
-yuldion-analyze review --state private/analysis.local.json --approve
+yuldion-action-verbs input --state private/analysis.local.json --text-file private/observation.txt
+yuldion-action-verbs review --state private/analysis.local.json --approve
 # status/export에서 확인한 0부터 시작하는 기존 확정 인덱스로 돌아가기
-yuldion-analyze rewind --state private/analysis.local.json --index 2
-yuldion-analyze export --state private/analysis.local.json --output private/analysis.md
+yuldion-action-verbs rewind --state private/analysis.local.json --index 2
+yuldion-action-verbs export --state private/analysis.local.json --output private/analysis.md
 ```
 
 되돌리기는 해당 항목부터 이후 확정을 무효화하고 원래 기록은 history에 보존합니다.

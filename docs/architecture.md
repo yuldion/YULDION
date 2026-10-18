@@ -59,3 +59,12 @@ Exceptions are journalled without a prerecorded/default-performance fallback.
 The CLI closes adapters; applications using the Python API must also own/close
 their adapters. No automatic checkpoint promotion, training, pod management or
 deletion is implemented.
+
+## Optional authoring tools
+
+`yuldion.tools.action_verbs` is a separate, explicitly invoked rehearsal CLI
+(`yuldion-action-verbs`). It has its own human approval workflow and model-server
+configuration. Actor core modules never import it or wait for its stage approvals.
+Its analysis is one optional acting method, not the definition of the engine's
+reasoning process. There is no automatic conversion of its state into an engine
+Scene/Plan, and no dependency on the separate script-analyzer repository.

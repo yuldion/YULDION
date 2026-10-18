@@ -6,10 +6,10 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
 from unittest.mock import patch
-from yuldion.analysis.core import (prepare, next_task, submit, human_input, review,
+from yuldion.tools.action_verbs.core import (prepare, next_task, submit, human_input, review,
                                    rewind, validate, prompt, markdown)
-from yuldion.analysis.__main__ import main
-from yuldion.analysis.model import generate
+from yuldion.tools.action_verbs.__main__ import main
+from yuldion.tools.action_verbs.model import generate
 
 SOURCE = {'character':'Actor','relationship_targets':['Other','Self'],
           'lines':[{'id':'1','text':'Stay here.'},{'id':'2','text':'But why?'},{'id':'3','text':'Listen.'}]}
