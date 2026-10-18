@@ -88,9 +88,10 @@ class ChatReasoner:
                 ' secondary context, not evidence for the meaning of a line. Do not just repeat its goals.'
                 ' For each textual_support item quote an exact span from text_reading observations,'
                 ' explain its interpretation and set intended_change exactly equal to action.desired_change.'
-                ' The view must contain at least one support quote as well as a fresh explanation.')
+                ' View must explain the wording; exact quotations are stored separately in textual_support.'
+                ' Desired_change must say what you want the target to consider/do now, not describe the speaker.')
             instructions += (' Explain the meaning and relationship implied by the current words in one or two'
-                             ' original analytical sentences. Include a brief quotation but NEVER just copy'
+                             ' original analytical sentences. NEVER just copy'
                              ' the script into view. Make intention specific to the words, not a copy of scene goals.')
         if operation == 'audit':
             instructions = ('Assess the supplied acting proposal against the current script and scene. '
@@ -127,14 +128,22 @@ class ChatReasoner:
             observations=call_options['response_schema']['properties']['observations']
             observations['minItems']=2
             limit=max(1,min(24,len(context.script.text)//2))
-            words=list(re.finditer(r"\w+(?:['’]\w+)?",context.script.text))
-            spans={context.script.text[left.start():right.end()]
-                   for i,left in enumerate(words) for right in words[i:i+4]
-                   if right.end()-left.start()<=limit}
+            segments=[part.strip() for part in re.split(r'[,;:.!?—–\n]+',context.script.text) if part.strip()]
+            spans={part for part in segments if len(part)<=limit}
+            if len(spans)<2:
+                # Generic word spans stay within punctuation-delimited phrases.
+                for part in segments:
+                    words=list(re.finditer(r"\w+(?:['’]\w+)?",part))
+                    spans.update(part[left.start():right.end()]
+                        for i,left in enumerate(words) for right in words[i:i+4]
+                        if right.end()-left.start()<=limit)
             if len(spans)<2:
                 raise ValueError('At least two distinct textual spans are required')
             # Grammar restricts copying to original substrings; it does not choose readings.
             observations['items']['properties']['quote']={'type':'string','enum':sorted(spans)}
+        if operation == 'propose':
+            call_options['response_schema']['properties']['textual_support']['items']['properties']['quote']={
+                'type':'string','enum':[o['quote'] for o in extra['text_reading']['observations']]}
         if operation == 'propose' and context.current_action is None:
             call_options['response_schema']['properties']['basis']={
                 'type':'array','minItems':1,'maxItems':1,
@@ -185,8 +194,7 @@ class ChatReasoner:
                     or text(item['interpretation']).strip()==item['quote'].strip()
                     or item['intended_change']!=action.desired_change):
                 raise ValueError('Support must connect observed wording to the chosen intention')
-        if not any(item['quote'] in text(a['view']) for item in support):
-            raise ValueError('View must cite its current-line support')
+        text(a['view'])
         normalize=lambda value: re.sub(r'[^\w]+','',value.lower())
         if normalize(a['view'])==normalize(context.script.text):
             raise ValueError('View must interpret, not repeat, current script')
