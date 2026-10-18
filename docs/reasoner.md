@@ -46,3 +46,11 @@ The normal engine action/continuity gates remain unchanged. A following audit ca
 receives both the original text reading and support; its verdict is recorded unchanged.
 Semantic entailment is still a fallible model/human judgment, not proven by JSON checks.
 The raw reading and support are retained in first-line probe output and model-call records.
+
+For the textual proposal call, authored scene goal/given explanations and scene
+observations are withheld to prevent direct copying; target/relationship constraints
+and prior action/evidence remain available. Full immutable scene premises return
+in audit/perform. Text-only reading requires at least two distinct short quotations.
+The first proposal's structured basis is constrained to the current script ID and
+verbatim reuse of a prepared scene goal as the desired change is rejected. These
+mechanical checks still do not establish semantic correctness.

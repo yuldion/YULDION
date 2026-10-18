@@ -12,7 +12,8 @@ class ChatReasonerTest(TestCase):
         return Context(scene,'hash',line,(line,),None,None,(),(),(),None,{})
 
     def reading(self):
-        return {'observations':[{'quote':'to sleep','reading':'Sleep is suggested as relief.'}],
+        return {'observations':[{'quote':'to sleep','reading':'Sleep is suggested as relief.'},
+                                {'quote':'No more','reading':'The utterance proposes an ending.'}],
                 'not_established':'Death is not proved to be sleep.'}
 
     def answer(self):

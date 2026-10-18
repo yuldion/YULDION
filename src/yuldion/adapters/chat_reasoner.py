@@ -1,4 +1,5 @@
 """Actual model-generated actor proposals, audits and performance instructions."""
+from copy import deepcopy
 from dataclasses import asdict
 import json
 import re
@@ -75,7 +76,7 @@ class ChatReasoner:
         instructions = SYSTEM + '\nCURRENT OPERATION: '+operation+'\n'
         if operation == 'read_text':
             instructions = ('Read ONLY the quoted current line. Do not use knowledge of the character, '
-                'prepared situation, plot or later lines. Identify one to four short exact spans and '
+                'prepared situation, plot or later lines. Identify two to four DISTINCT short exact spans, not the whole line, and '
                 'briefly explain a meaning, relation or rhetorical function suggested by each. Mark '
                 'uncertain implications as possibilities. Do not merely restate the text or invent '
                 'listeners, motives or outcomes. State what this wording alone does not establish. '
@@ -110,12 +111,26 @@ class ChatReasoner:
             payload['current_line']={'id':context.script.id,'text':context.script.text}
         else:
             payload['context']=asdict(context)
+            if operation == 'propose':
+                # Generate textual intention before exposing prepared explanatory goals.
+                # The full immutable scene is still supplied to audit and perform.
+                payload['context']['scene']={k:v for k,v in payload['context']['scene'].items()
+                    if k in ('target_id','relationship','interpretation_status')}
+                payload['context']['evidence']=[o for o in payload['context']['evidence'] if o['kind']!='scene']
         messages = [{'role':'system','content':instructions},
                     {'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
         started=monotonic()
         call_options=dict(self.options)
         if operation in ('read_text','propose','audit'):
-            call_options['response_schema']=JSON_SCHEMAS[operation]
+            call_options['response_schema']=deepcopy(JSON_SCHEMAS[operation])
+        if operation == 'read_text':
+            observations=call_options['response_schema']['properties']['observations']
+            observations['minItems']=2
+            observations['items']['properties']['quote']={'type':'string','maxLength':max(1,min(24,len(context.script.text)//2))}
+        if operation == 'propose' and context.current_action is None:
+            call_options['response_schema']['properties']['basis']={
+                'type':'array','minItems':1,'maxItems':1,
+                'items':{'type':'string','enum':[context.script.id]}}
         answer,receipt=generate(call_options,messages)
         self.calls.append({'operation':operation,'request':messages,'response':answer,
                            'receipt':receipt,'elapsed_s':monotonic()-started})
@@ -128,14 +143,17 @@ class ChatReasoner:
         key=(context.scene_hash,context.script.id,context.script.text)
         reading=self._call('read_text',context,cancel)
         observations=reading['observations']
-        if not isinstance(observations,list) or not 1<=len(observations)<=4:
+        if not isinstance(observations,list) or not 2<=len(observations)<=4:
             raise ValueError('Text observations required')
         for item in observations:
             if not isinstance(item,dict) or set(item)!={'quote','reading'}:
                 raise ValueError('Invalid text observation')
             quote=text(item['quote']); explanation=text(item['reading'])
-            if quote not in context.script.text or explanation.strip()==quote.strip():
+            if (quote not in context.script.text or explanation.strip()==quote.strip()
+                    or len(quote)>max(1,min(24,len(context.script.text)//2))):
                 raise ValueError('Reading must explain an exact current-line quote')
+        if len({item['quote'] for item in observations})!=len(observations):
+            raise ValueError('Text observations must use distinct quotes')
         text(reading['not_established'])
         self.readings[key]=reading
         a=self._call('propose',context,cancel,text_reading=reading)
@@ -166,6 +184,8 @@ class ChatReasoner:
             raise ValueError('View must interpret, not repeat, current script')
         if context.script.id not in a['basis']:
             raise ValueError('Current script evidence required')
+        if action.desired_change.strip() in (context.scene.scene_goal.strip(),context.scene.overarching_goal.strip()):
+            raise ValueError('Intention must not copy a prepared scene goal')
         self.supports[key]=support
         trigger=Trigger(**{**a['trigger'],'basis':basis(a['trigger']['basis'])})
         if trigger.kind not in ('none','external_event','discovery'): raise ValueError('Invalid trigger')
