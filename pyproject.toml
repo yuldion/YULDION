@@ -13,6 +13,7 @@ dependencies = []
 
 [project.scripts]
 yuldion = "yuldion.cli:main"
+yuldion-analyze = "yuldion.analysis.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

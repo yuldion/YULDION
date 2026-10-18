@@ -1,0 +1,13 @@
+{
+  "character": "Hamlet",
+  "relationship_targets": ["자신의 판단을 검토하는 자기 자신"],
+  "background": "햄릿 3막 1장 일부. 상대를 자기 자신으로 설정하는 것은 잠정 리허설 선택이며 대본 사실이 아닙니다. 별도 번역문은 사용하지 않습니다.",
+  "lines": [
+    {"id": "L01", "text": "To die, to sleep—"},
+    {"id": "L02", "text": "No more; and by a sleep to say we end"},
+    {"id": "L03", "text": "The heart-ache and the thousand natural shocks"},
+    {"id": "L04", "text": "That flesh is heir to, 'tis a consummation"},
+    {"id": "L05", "text": "Devoutly to be wish'd. To die, to sleep;"},
+    {"id": "L06", "text": "To sleep: perchance to dream: ay, there's the rub;"}
+  ]
+}

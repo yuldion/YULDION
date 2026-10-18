@@ -1,0 +1,5 @@
+{
+  "endpoint": "http://127.0.0.1:8000/v1/chat/completions",
+  "model": "replace-with-your-served-model-id",
+  "api_key_env": "YULDION_ANALYSIS_API_KEY"
+}
