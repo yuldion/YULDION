@@ -20,13 +20,37 @@
 | 구성 | 포함된 것 | 남은 연결/검증 |
 |---|---|---|
 | 배우 엔진 | 첫 대사 전 계획, 목표·관계 유지, 행동 전환 검사, 공통 오디오 시계 | 실제 해석·음성·얼굴 모델 통합 및 연기 평가 |
-| 해석 모델 | chat-completions 추론 어댑터·첫 대사 전용 probe | 실제 모델 서버 연결·생성 검수 |
+| 해석 모델 | OpenAI/로컬 선택, 전체 구절·관계 읽기, 근거 검사, 첫 대사 파이프라인 | OpenAI 실계정 검증·해석 품질 평가 |
 | 음성 | 지연 로딩 CosyVoice3 포트 | 선택 모델·기준 음성·환경 연결, 실제 청취 |
 | 얼굴 | 현재 음성·motor·gaze를 요구하는 backend 포트 | 의도→포즈 변환·실제 renderer backend 구현/연결 |
 | 선택 도구 | 행동동사 분석·항목별 사용자 확정 CLI | 사용자가 지정한 언어모델 서버 연결 |
 
 가중치·기준 음성·인물 이미지는 포함하지 않습니다. 미연결 상태에서는 가짜 연기를
 만들지 않습니다. 모델 설치·학습·팟 생성은 실행자가 별도로 관리합니다.
+로컬 Qwen3-8B의 실제 첫 대사 생성은 확인했으며, OpenAI 실계정 호출과
+음성·얼굴을 포함한 전체 통합 실행은 아직 검증하지 않았습니다.
+
+## OpenAI / 로컬 모델 선택해서 시작
+
+```bash
+# 설치 후, 둘 중 하나를 선택해 private 설정 생성
+yuldion pipeline init --provider openai --scene examples/hamlet.json --config private/openai.local.json
+# 또는 이미 준비한 llama.cpp 서버를 사용
+yuldion pipeline init --provider local --scene examples/hamlet.json --config private/local.local.json
+
+# 설정만 검사: 네트워크·모델 로드 없음
+yuldion pipeline check --config private/openai.local.json
+# OpenAI 키 숨김 입력 → 첫 대사 읽기·해석·의도·감사만 실제 실행
+yuldion pipeline interpret --config private/openai.local.json --prompt-api-key
+# 로컬 서버를 켠 경우
+yuldion pipeline interpret --config private/local.local.json
+```
+
+OpenAI 사용자는 자기 API 키와 이용 요금이 필요합니다. 로컬 모드는 외부 API 키 없이
+별도로 준비한 모델·장비를 사용합니다. **위의 interpret는 음성·얼굴을 로드하지 않습니다.**
+전체 배우 실행은 해당 모델들이 연결된 뒤 `yuldion pipeline run`으로 시작합니다.
+
+[처음부터 설치·키 설정·로컬 서버·실행·결과 확인](docs/pipeline.md)
 
 ## 핵심 엔진 설치·확인
 

@@ -14,6 +14,10 @@ from .events import canonical
 from .stimuli import FileStimuli
 
 def main(argv=None):
+    argv=list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0]=="pipeline":
+        from .pipeline import main as pipeline_main
+        return pipeline_main(argv[1:])
     parser = argparse.ArgumentParser(prog="yuldion", description="YULDION · 화면 없는 AI 배우 핵심 엔진")
     parser.add_argument("--version", action="version", version=__version__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -28,6 +32,7 @@ def main(argv=None):
             sub.add_argument("--json-events", action="store_true", help="표준 출력에 실제 이벤트 JSONL")
     sub = commands.add_parser("inspect", help="저장된 이벤트 원문 확인 · 재추론 없음")
     sub.add_argument("journal", type=Path)
+    commands.add_parser("pipeline", help="OpenAI/로컬 선택·설정·해석·전체 실행")
     args = parser.parse_args(argv)
     adapters = None
     try:

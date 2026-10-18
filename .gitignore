@@ -12,6 +12,8 @@ dist/
 *.pt
 *.pth
 *.safetensors
+*.gguf
+*.ggml
 *.ckpt
 *.onnx
 *.bin

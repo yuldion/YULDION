@@ -6,6 +6,9 @@ from urllib.parse import urlparse
 from urllib.request import Request
 
 def generate(config, messages):
+    if "provider" in config:
+        from .providers import validate_provider
+        validate_provider(config)
     timeout=config.get('request_timeout_seconds',60)
     if type(timeout) not in (int,float) or not math.isfinite(timeout) or not 1<=timeout<=180:
         raise ValueError('request_timeout_seconds must be in 1..180')
@@ -31,11 +34,13 @@ def generate(config, messages):
     request = Request(endpoint, data=json.dumps({'model': model, 'messages': messages,
         'temperature': 0.2, 'max_tokens': 1800, 'response_format': response_format}).encode(), headers=headers)
     # No redirects: never forward an authorization header to another host.
-    from urllib.request import build_opener, HTTPRedirectHandler
+    from urllib.request import build_opener, HTTPRedirectHandler, ProxyHandler
     class NoRedirect(HTTPRedirectHandler):
         def redirect_request(self, *args, **kwargs):
             return None
-    with build_opener(NoRedirect()).open(request, timeout=timeout) as response:
+    handlers=[NoRedirect()]
+    if config.get('provider')=='local':handlers.insert(0,ProxyHandler({}))
+    with build_opener(*handlers).open(request, timeout=timeout) as response:
         raw = response.read(1024 * 1024 + 1)
     if len(raw) > 1024 * 1024:
         raise ValueError('Model response too large')
