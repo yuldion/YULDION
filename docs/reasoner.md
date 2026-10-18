@@ -78,3 +78,25 @@ ambiguity. No particular relation is predetermined by the code. Both reading and
 intention support must cover the final phrase. Tuple schemas constrain only exact
 quotations/order, not the generated meaning. Longer lines retain bounded span reading;
 this short-line coverage check is not a universal syntactic parser.
+
+## OpenAI API option
+
+Copy `examples/openai-reasoner.template.json` to a Git-ignored private config.
+Set `OPENAI_API_KEY` in the environment; never put a key in source or a chat.
+This optional configuration sends the current script/analysis to OpenAI and incurs
+API charges. Voice/face adapters are not used by the first-line probe.
+
+The example uses `gpt-4.1` with JSON object mode because the local llama.cpp tuple
+schemas (`prefixItems`) are provider-specific. The same Python quote, coverage,
+order, relation and intention checks still run and reject malformed outputs;
+JSON mode itself guarantees neither schema adherence nor semantic correctness.
+No failed request is silently retried in this transport.
+
+```bash
+PYTHONPATH=src python3 -m yuldion.reasoner_probe \
+  --scene-config examples/hamlet.json \
+  --model-config private/openai-reasoner.local.json \
+  --output private/openai-first-line.local.json
+```
+
+Official reference: https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=chat

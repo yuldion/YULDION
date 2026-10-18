@@ -22,7 +22,10 @@ def generate(config, messages):
     if config.get('api_key_env'):
         headers['Authorization'] = 'Bearer ' + os.environ[config['api_key_env']]
     response_format = {'type': 'json_object'}
-    if config.get('response_schema') is not None:
+    mode=config.get('response_format_mode','json_schema')
+    if mode not in ('json_schema','json_object'):
+        raise ValueError('Unsupported response_format_mode')
+    if config.get('response_schema') is not None and mode=='json_schema':
         response_format = {'type':'json_schema', 'json_schema':{
             'name':'actor_response','strict':True,'schema':config['response_schema']}}
     request = Request(endpoint, data=json.dumps({'model': model, 'messages': messages,
