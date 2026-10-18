@@ -1,0 +1,9 @@
+{
+  "kind": "python",
+  "entrypoint": "your_installed_adapter:create_voice",
+  "options": {
+    "checkpoint": "/workspace/models/your-selected-voice",
+    "reference": "/workspace/private/voice-reference.wav",
+    "device": "cuda:0"
+  }
+}

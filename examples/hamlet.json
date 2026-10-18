@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "scene": {
+    "character_id": "hamlet",
+    "overarching_goal": "Seek grounds for action and relief without treating uncertainty as knowledge.",
+    "scene_goal": "Bring the internal judging position toward a defensible assessment of the proposed relief.",
+    "given": "SELF is in a painful situation. What follows death and another person's intentions are not known.",
+    "target_id": "internal_judge",
+    "relationship": "SELF addresses its own judging position; this is a rehearsal hypothesis.",
+    "interpretation_status": "provisional_rehearsal_hypothesis_not_actor_approved"
+  },
+  "script": [
+    "To die, to sleep—No more—",
+    "and by a sleep to say we end the heartache",
+    "and the thousand natural shocks that flesh is heir to—'tis a consummation devoutly to be wished.",
+    "To die, to sleep—To sleep, perchance to dream.",
+    "Ay, there's the rub."
+  ],
+  "adapters": {
+    "reasoner": {"kind": "unconfigured"},
+    "voice": {"kind": "unconfigured"},
+    "face": {"kind": "unconfigured"}
+  },
+  "output_dir": "../outputs"
+}
