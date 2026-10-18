@@ -1,10 +1,14 @@
 """Explicit chat-completion endpoint; no provider or model downloads selected by default."""
 import json
 import os
+import math
 from urllib.parse import urlparse
 from urllib.request import Request
 
 def generate(config, messages):
+    timeout=config.get('request_timeout_seconds',60)
+    if type(timeout) not in (int,float) or not math.isfinite(timeout) or not 1<=timeout<=180:
+        raise ValueError('request_timeout_seconds must be in 1..180')
     endpoint = config['endpoint']
     url = urlparse(endpoint)
     if url.username or url.password or url.query or url.fragment:
@@ -28,7 +32,7 @@ def generate(config, messages):
     class NoRedirect(HTTPRedirectHandler):
         def redirect_request(self, *args, **kwargs):
             return None
-    with build_opener(NoRedirect()).open(request, timeout=60) as response:
+    with build_opener(NoRedirect()).open(request, timeout=timeout) as response:
         raw = response.read(1024 * 1024 + 1)
     if len(raw) > 1024 * 1024:
         raise ValueError('Model response too large')
