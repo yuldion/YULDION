@@ -68,3 +68,13 @@ possibility of death as a resolution to suffering” as the desired change. “S
 is an inferred reading, not a directly quoted fact; “No more” was not separately
 analyzed by this response. Human review remains necessary. Prior failures were retained,
 including invalid quotations, goal copying, redundant support checks and a timeout.
+
+## Whole-line qualification and continuation
+
+For short lines containing two to four punctuation-delimited phrases, reading
+now covers every phrase in source order. A structured relation records how each
+following phrase continues, qualifies or changes its predecessor, including remaining
+ambiguity. No particular relation is predetermined by the code. Both reading and
+intention support must cover the final phrase. Tuple schemas constrain only exact
+quotations/order, not the generated meaning. Longer lines retain bounded span reading;
+this short-line coverage check is not a universal syntactic parser.

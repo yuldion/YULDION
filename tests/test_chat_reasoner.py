@@ -12,14 +12,22 @@ class ChatReasonerTest(TestCase):
         return Context(scene,'hash',line,(line,),None,None,(),(),(),None,{})
 
     def reading(self):
-        return {'observations':[{'quote':'to sleep','reading':'Sleep is suggested as relief.'},
-                                {'quote':'No more','reading':'The utterance proposes an ending.'}],
+        return {'observations':[{'quote':'To die','reading':'A possible ending is proposed.'},
+                                {'quote':'to sleep','reading':'Sleep is used as a comparison.'},
+                                {'quote':'No more','reading':'The preceding comparison is provisionally limited.'}],
+                'relations':[{'earlier_quote':'To die','later_quote':'to sleep',
+                              'effect':'The following words compare the proposed ending to sleep.',
+                              'not_established':'The comparison is not established as a fact.'},
+                             {'earlier_quote':'to sleep','later_quote':'No more',
+                              'effect':'The final words provisionally limit what is added to the comparison.',
+                              'not_established':'The full scope of the ellipsis is uncertain.'}],
                 'not_established':'Death is not proved to be sleep.'}
 
     def answer(self):
         return {'decision':'initialize','view':'to sleep is proposed as an end to disturbance, not established fact.',
-                'textual_support':[{'quote':'to sleep','interpretation':'Sleep is suggested as relief.',
-                                    'intention_link':'The offered comparison invites the target to consider the proposal.'}],
+                'textual_support':[{'quote':item['quote'],'interpretation':item['reading'],
+                                    'intention_link':'This supports the target considering the limited proposal.'}
+                                   for item in self.reading()['observations']],
                 'basis':['script:0'],'action':{'target_id':'self','desired_change':'consider the proposal',
                 'tactic':'invite','observable_test':'an actual response if observed'},
                 'trigger':{'kind':'none','basis':[],'prior_assumption':'','new_insight':'','why_action_insufficient':''}}
@@ -39,7 +47,8 @@ class ChatReasonerTest(TestCase):
         self.assertNotIn('seek grounds',second)
         self.assertNotIn('consider relief',second)
         options=generate.call_args_list[0].args[0]
-        quotes=options['response_schema']['properties']['observations']['items']['properties']['quote']['enum']
+        quotes=[item['properties']['quote']['const'] for item in
+                options['response_schema']['properties']['observations']['prefixItems']]
         self.assertEqual(set(quotes),{'To die','to sleep','No more'})
 
     def test_invalid_evidence_rejected_and_raw_response_kept(self):
@@ -92,3 +101,17 @@ class ChatReasonerTest(TestCase):
             with self.assertRaises(ValueError):
                 generate({'endpoint':'http://localhost:8000/v1/chat/completions',
                           'model':'test','request_timeout_seconds':timeout},[])
+
+    def test_final_clause_cannot_be_omitted(self):
+        reading=self.reading();reading['observations'].pop()
+        with patch('yuldion.adapters.chat_reasoner.generate',return_value=(reading,{})) as generate:
+            with self.assertRaises(ValueError):ChatReasoner({}).propose(self.context(),Event())
+        self.assertEqual(generate.call_count,1)
+
+    def test_reversed_relation_and_missing_final_support_are_rejected(self):
+        reading=self.reading();reading['relations'][1]['earlier_quote']='No more'
+        with patch('yuldion.adapters.chat_reasoner.generate',return_value=(reading,{})):
+            with self.assertRaises(ValueError):ChatReasoner({}).propose(self.context(),Event())
+        answer=self.answer();answer['textual_support'].pop()
+        with patch('yuldion.adapters.chat_reasoner.generate',side_effect=[(self.reading(),{}),(answer,{})]):
+            with self.assertRaises(ValueError):ChatReasoner({}).propose(self.context(),Event())
