@@ -1,0 +1,22 @@
+{
+  "voice": {
+    "kind": "python",
+    "entrypoint": "yuldion.adapters.cosyvoice:create_voice",
+    "options": {
+      "checkpoint": "/workspace/models/selected-cosyvoice3",
+      "reference": "/workspace/private/reference.wav",
+      "model_id": "replace-with-verified-model-id",
+      "fp16": true
+    }
+  },
+  "face": {
+    "kind": "python",
+    "entrypoint": "yuldion.adapters.controlled_face:create_face",
+    "options": {
+      "enabled": false,
+      "model_id": "replace-with-verified-model-id",
+      "backend_factory": "your_installed_live_renderer:create_backend",
+      "backend_options": {}
+    }
+  }
+}
