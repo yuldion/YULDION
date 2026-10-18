@@ -161,3 +161,33 @@ class PipelineTests(TestCase):
             config=self.init(folder);out=Path(folder)/'run'
             self.assertEqual(self.call(['interpret','--config',str(config),'--output-dir',str(out)]),130)
             self.assertEqual(json.loads((out/'manifest.json').read_text())['status'],'cancelled')
+
+    def test_full_script_context_and_selected_fragment_are_distinct(self):
+        captured=[]
+        def model(options,messages):
+            payload=json.loads(messages[1]['content']);captured.append((payload,messages[0]['content']))
+            answer=fixture_response(payload)
+            if payload['operation']=='propose':answer['basis']=[payload['context']['script']['id']]
+            return answer,{'reported_model':'test-double'}
+        with tempfile.TemporaryDirectory() as folder,patch('yuldion.adapters.chat_reasoner.generate',side_effect=model):
+            config=Path(folder)/'full.local.json';out=Path(folder)/'run'
+            full=EXAMPLE.parent/'hamlet-soliloquy.json'
+            self.assertEqual(self.call(['init','--scene',str(full),'--provider','local','--config',str(config)]),0)
+            self.assertEqual(self.call(['interpret','--config',str(config),'--context','full-script',
+                                        '--focus-index','1','--output-dir',str(out)]),0)
+            result=json.loads((out/'result.json').read_text())
+            self.assertEqual(result['input']['script']['id'],'script:1')
+            self.assertEqual(result['input']['script']['text'],'To die—to sleep,\nNo more')
+            self.assertTrue(result['prepared_script'][0]['text'].startswith('To be, or not to be'))
+            self.assertTrue(result['prepared_script'][-1]['text'].endswith('Be all my sins remember’d.'))
+            self.assertEqual(len(captured[0][0]['prepared_script']),3)
+            self.assertIn('not newly observed events',captured[0][1])
+            observed_ids={o['id'] for o in result['input']['evidence']}
+            self.assertNotIn('script:2',observed_ids)
+            self.assertEqual(json.loads((out/'manifest.json').read_text())['context_mode'],'full-script')
+
+    def test_out_of_range_focus_never_calls_a_model(self):
+        with tempfile.TemporaryDirectory() as folder,patch('yuldion.adapters.chat_reasoner.generate') as model:
+            config=self.init(folder)
+            self.assertEqual(self.call(['interpret','--config',str(config),'--focus-index','999']),2)
+            model.assert_not_called()

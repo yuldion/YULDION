@@ -71,8 +71,9 @@ def text(value):
 
 
 class ChatReasoner:
-    def __init__(self, options):
+    def __init__(self, options, prepared_script=()):
         self.options = dict(options)
+        self.prepared_script=tuple(prepared_script)
         if "provider" in self.options:
             from yuldion.providers import validate_provider
             validate_provider(self.options)
@@ -136,7 +137,20 @@ class ChatReasoner:
             instructions += (' Generate delivery and motor for the chosen action. Motor must match the'
                              ' installed face backend coordinate contract. If action_changed is false'
                              ' and previous_motor exists, copy previous_motor EXACTLY. No old trajectory playback.')
+        if self.prepared_script:
+            instructions=instructions.replace(
+                'Do not use knowledge of the character, prepared situation, plot or later lines.',
+                'Use the current line and the explicitly supplied prepared_script only; do not invent unsupplied plot.')
+            instructions=instructions.replace('using ONLY this current line',
+                'using the current line with explicitly provided full-script context')
+            instructions += (' The prepared_script is rehearsal context known to the reader, not newly observed events.'
+                ' Use it to resolve syntax, ellipsis and overall meaning, but do not treat a later phrase/discovery as'
+                ' already uttered or already discovered at the current line. Keep current-line interpretation and'
+                ' prepared future context distinct; never claim the character has already reacted to a later event.')
         payload={'operation':operation,'output_schema':SCHEMAS[operation],**extra}
+        if self.prepared_script:
+            payload['prepared_script']=[asdict(line) for line in self.prepared_script]
+
         if operation == 'read_text':
             payload['current_line']={'id':context.script.id,'text':context.script.text}
             payload['coverage_quotes']=required_clauses(context.script.text)

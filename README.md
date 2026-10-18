@@ -52,6 +52,10 @@ OpenAI 사용자는 자기 API 키와 이용 요금이 필요합니다. 로컬 �
 
 [처음부터 설치·키 설정·로컬 서버·실행·결과 확인](docs/pipeline.md)
 
+독백 전체를 준비 맥락으로 읽고 `To die—to sleep, No more`를 해석하려면
+`bash scripts/run_openai_soliloquy.sh`를 실행하세요. API 키는 숨김 입력하며
+파일에 저장하지 않습니다. 모델 응답은 실행 후에만 생성됩니다.
+
 ## 핵심 엔진 설치·확인
 
 Python 3.11 이상. 핵심 런타임 외부 의존성은 없습니다.

@@ -46,7 +46,11 @@ def main(argv=None):
         sub.add_argument('--config',type=Path,required=True)
         if name in ('interpret','run'):
             sub.add_argument('--prompt-api-key',action='store_true',help='OpenAI 키가 없으면 숨김 입력; 파일 저장 없음')
-        if name=='interpret':sub.add_argument('--output-dir',type=Path)
+        if name=='interpret':
+            sub.add_argument('--output-dir',type=Path)
+            sub.add_argument('--focus-index',type=int,default=0,help='분석할 script 배열 인덱스; 0부터 시작')
+            sub.add_argument('--context',choices=('current-line','full-script'),default='current-line',
+                             help='현재 구절만 또는 설정의 대본 전체를 준비 맥락으로 제공')
         if name=='run':
             sub.add_argument('--max-seconds',type=float,default=300)
             sub.add_argument('--events',type=Path)
@@ -101,6 +105,8 @@ def main(argv=None):
             temporary_key=options['api_key_env']
             os.environ[temporary_key]=value
             ready=True
+        if args.command=='interpret' and not 0<=args.focus_index<len(config.script):
+            raise ValueError('Invalid focus index')
         if not ready:
             raise ValueError('Set the configured API key environment variable before inference')
         if args.command=='run':
@@ -113,9 +119,10 @@ def main(argv=None):
         run_id='interpret-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]
         directory=args.output_dir or config.output_dir/run_id
         directory.mkdir(parents=True,exist_ok=False)
-        snapshot={'scene':asdict(config.scene),'script':[config.script[0]],'reasoner':options}
+        snapshot={'scene':asdict(config.scene),'script':list(config.script) if args.context=='full-script' else [config.script[args.focus_index]],
+                  'context_mode':args.context,'focus_index':args.focus_index,'reasoner':options}
         write_new(directory/'input.json',snapshot)
-        result=run_probe(config,options,directory/'result.json')
+        result=run_probe(config,options,directory/'result.json',args.context,args.focus_index)
         input_hash=sha256((directory/'input.json').read_bytes()).hexdigest()
         code_dir=Path(__file__).resolve().parent
         source_hashes={name:sha256((code_dir/name).read_bytes()).hexdigest() for name in
@@ -132,7 +139,7 @@ def main(argv=None):
             'reported_models':sorted({c['receipt'].get('reported_model','') or '' for c in result['calls']}),
             'code_commit':code_commit,'source_sha256':source_hashes,
             'model_weights_sha256':'not_supplied',
-            'status':result['status'],'input_sha256':input_hash,
+            'status':result['status'],'context_mode':args.context,'input_sha256':input_hash,
             'result_sha256':sha256((directory/'result.json').read_bytes()).hexdigest(),
             'voice_face_loaded':False,'human_approved':False,'backup_status':'unverified'})
         print(json.dumps({'run_id':run_id,'status':result['status'],

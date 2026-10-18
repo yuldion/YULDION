@@ -180,3 +180,45 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Qwen3-8B Q4_K_M + llama.cpp b11718의 실제 첫 대사/전체 구절 읽기는 별도로 실행해
 확인했습니다. OpenAI는 API 키가 없어 실제 계정 호출을 수행하지 않았습니다.
 GitHub 코드 업로드, 모델 실행, 사용자 채택, Drive 백업은 각각 별개 상태입니다.
+
+## 독백 전체를 읽고 특정 구절 해석하기
+
+```bash
+yuldion pipeline init --provider openai --scene examples/hamlet-soliloquy.json \
+  --config private/openai-soliloquy.local.json
+yuldion pipeline interpret --config private/openai-soliloquy.local.json \
+  --context full-script --focus-index 1 --prompt-api-key
+```
+
+`--context full-script`는 설정의 script 전체를 준비 맥락으로 모델에게 전달합니다.
+`--focus-index 1`은 그중 두 번째 입력 구간을 현재 해석 대상으로 지정합니다.
+이 예제는 To be, or not to be부터 Be all my sins remember’d까지 독백 35줄 전체를
+포함하고, 현재 대상은 원문 판본의 `To die—to sleep,\nNo more`입니다. 이전 입력의
+쉼표·대시는 판본과 달랐으며 여기서는 아래 출처의 구두점을 유지합니다.
+입력 배열 3조각은 대상 구절을 지정하기 위한 텍스트 분할이며 심리적 유닛 확정이 아닙니다.
+
+전체 대본은 배우/리허설의 준비 정보이고, 뒤 대사의 발견이 현재 인물에게 이미
+일어난 사건은 아닙니다. 모델 프롬프트와 결과 기록에서 준비 맥락과 현재 대사를
+구분합니다. 이 구분의 실제 연기 타당성은 검수가 필요합니다.
+기본 `--context current-line`은 여전히 선택 구간만 보내는 비교용 경로입니다.
+이 옵션은 해석 전용 interpret/probe에 적용하며 전체 배우 run에 준비 대본을
+자동 주입하는 기능은 아닙니다.
+
+공개 원문: William Shakespeare, Hamlet, Act III Scene I,
+[Project Gutenberg ebook 1524](https://www.gutenberg.org/files/1524/1524-0.txt).
+`examples/hamlet-soliloquy.txt`는 해당 독백 원문이고, JSON은 그 원문을 입력용으로
+분할한 파일입니다. 현대 번역이나 편집자의 해설은 포함하지 않습니다.
+
+숨김 키 입력부터 위 독백 실행까지 한 번에 시작하려면 저장소 루트에서:
+
+```bash
+bash scripts/run_openai_soliloquy.sh
+```
+
+이 스크립트는 별도 키 파일을 만들지 않습니다. 기존 private 설정은 덮어쓰지 않으며,
+환경변수 키가 없을 때만 숨김 입력을 요청합니다. `YULDION_PYTHON`으로 Python 실행기를
+선택할 수 있습니다. 이 Mac에서 기본 Python CA 연결이 실패하는 문제는
+`SSL_CERT_FILE=/etc/ssl/cert.pem`으로 확인했으며, 스크립트는 별도 CA 설정이 없고
+시스템 CA 파일이 있을 때만 이를 사용합니다. TLS 검증을 끄지 않습니다.
+API 키가 설정되지 않은 현재 단계에서는 생성 결과가 아직 없습니다. 터미널에서 실행하면
+실제 OpenAI 호출 후 `outputs/interpret-.../result.json`에 해석·의도를 보존합니다.
