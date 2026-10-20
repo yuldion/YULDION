@@ -29,8 +29,16 @@ def model_options(config):
 
 
 def main(argv=None):
+    arguments=list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] in ('prepare','review','plan','bind'):
+        from .preparation_cli import main as ordered_main
+        return ordered_main(arguments)
     parser=argparse.ArgumentParser(prog='yuldion pipeline',description='OpenAI / local interpretation pipeline')
     commands=parser.add_subparsers(dest='command',required=True)
+    commands.add_parser('prepare',help='전체 대본을 원래 순서대로 분석하고 배우 설정에 연결')
+    commands.add_parser('review',help='준비된 분석의 근거·시간 순서·전환을 검수; 새 해석 생성 없음')
+    commands.add_parser('bind',help='수정한 분석 문서를 새 설정에 연결; 모델 호출 없음')
+    commands.add_parser('plan',help='전체 분석 기반으로 첫 대사부터 연속 연기 계획 생성; 미디어 로드 없음')
     init=commands.add_parser('init',help='장면 복사·제공자 선택; 모델/네트워크 실행 없음')
     init.add_argument('--scene',type=Path,required=True)
     init.add_argument('--provider',choices=('openai','local'),required=True)
@@ -45,6 +53,7 @@ def main(argv=None):
               'run':'연결한 음성·얼굴까지 배우 엔진 실행'}[name])
         sub.add_argument('--config',type=Path,required=True)
         if name in ('interpret','run'):
+            sub.add_argument('--diagnostic-unprepared','--diagnostic-reanalyse',dest='diagnostic_unprepared',action='store_true',help='Explicit legacy diagnostic without whole-script preparation')
             sub.add_argument('--prompt-api-key',action='store_true',help='OpenAI 키가 없으면 숨김 입력; 파일 저장 없음')
         if name=='interpret':
             sub.add_argument('--output-dir',type=Path)
@@ -60,6 +69,7 @@ def main(argv=None):
     serve.add_argument('--model-id',default='yuldion-qwen3-8b')
     serve.add_argument('--port',type=int,default=8080)
     serve.add_argument('--gpu-layers',type=int,default=0)
+    serve.add_argument('--context-size',type=int,default=4096)
     serve.add_argument('--threads',type=int,default=4)
     args=parser.parse_args(argv)
     temporary_key=None
@@ -78,16 +88,20 @@ def main(argv=None):
             return 0
         if args.command=='serve-local':
             if not args.model_path.is_file():raise ValueError('Existing GGUF model file required')
-            if not 1024<=args.port<=65535 or not 1<=args.threads<=64 or not 0<=args.gpu_layers<=999:
+            if not 1024<=args.port<=65535 or not 1<=args.threads<=64 or not 0<=args.gpu_layers<=999 or not 4096<=args.context_size<=131072:
                 raise ValueError('Invalid server resource option')
             binary=shutil.which(args.binary)
             if binary is None:raise ValueError('Install llama.cpp or provide --binary')
             command=[binary,'-m',str(args.model_path.resolve()),'--host','127.0.0.1',
-                '--port',str(args.port),'--alias',args.model_id,'-c','4096','-np','1',
+                '--port',str(args.port),'--alias',args.model_id,'-c',str(args.context_size),'-np','1',
                 '-t',str(args.threads),'-tb',str(args.threads),'-ngl',str(args.gpu_layers),
                 '--jinja','--reasoning','off']
             return subprocess.run(command,check=False).returncode
         config=load_config(args.config)
+        if args.command in ('interpret','run') and not config.preparation and not args.diagnostic_unprepared:
+            raise ValueError('Whole-script preparation required; use pipeline prepare first')
+        if args.command=='interpret' and not args.diagnostic_unprepared:
+            raise ValueError('interpret is an explicit reanalysis diagnostic; use plan for prepared performance')
         options=model_options(config)
         ready=authentication_ready(options)
         if args.command=='check':

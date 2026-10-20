@@ -18,8 +18,9 @@ def run_probe(config, options, output, context_mode='current-line', focus_index=
     reasoner=ChatReasoner(options,prepared_script=prepared)
     script=Observation(f'script:{focus_index}','authored_script',config.script[focus_index])
     scene=Observation('scene:0','scene',canonical(asdict(config.scene)))
+    from .preparation import for_segment
     context=Context(config.scene,sha256(canonical(asdict(config.scene)).encode()).hexdigest(),
-                    script,(scene,script),None,None,(),(),(),None,{})
+                    script,(scene,script),None,None,(),(),(),None,{}, preparation=for_segment(config.preparation,config.script,focus_index))
     record={'mode':'actual-model-request; selected-fragment-only', 'input':asdict(context),
             'voice_face_loaded':False,'human_approved':False,'status':'started',
             'context_mode':context_mode,'focus_index':focus_index,'prepared_script':[asdict(o) for o in prepared]}

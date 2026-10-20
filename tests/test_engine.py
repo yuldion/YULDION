@@ -147,12 +147,14 @@ class EngineTests(unittest.TestCase):
         engine = self.setup_engine(reasoner=FakeReasoner([Proposal('initialize', 'A.', ('script:0',), wrong)]))
         with self.assertRaisesRegex(ContractError, 'immutable'): engine.run()
 
-    def test_retained_action_rejects_replaced_face_target(self):
+    def test_retained_action_allows_expression_and_gaze_to_develop(self):
         class BadReasoner(FakeReasoner):
             def perform(self, *args): return Performance('Test-only.', {'x': len(self.contexts)})
         engine = self.setup_engine(reasoner=BadReasoner())
-        with self.assertRaisesRegex(ContractError, 'retain the same'): engine.run()
-        self.assertEqual(len(self.adapters.voice.calls), 1)
+        engine.run()
+        plans=[e['payload']['plan'] for e in self.records() if e['type']=='plan.committed']
+        self.assertEqual(plans[0]['action_id'],plans[1]['action_id'])
+        self.assertNotEqual(plans[0]['performance']['motor'],plans[1]['performance']['motor'])
 
     def test_bad_audio_plan_id_fails_and_preserves_journal(self):
         class WrongVoice(FakeVoice):

@@ -1,0 +1,10 @@
+{
+  "voice": {
+    "entrypoint": "yuldion.adapters.b_cosyvoice:create_voice",
+    "options": {
+      "backend_factory": "your_private_b_runtime:create_prepared_b",
+      "backend_options": {},
+      "allow_experimental": false
+    }
+  }
+}

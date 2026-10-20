@@ -97,7 +97,8 @@ def validate_proposal(state, result, expected):
             if (not isinstance(ev, dict) or set(ev) != {'line_id','quote'}
                     or not isinstance(ev['quote'], str) or not ev['quote'].strip()
                     or ev['line_id'] not in lines or ev['quote'] not in lines[ev['line_id']]):
-                raise ValueError('Evidence quote must occur verbatim in source line')
+                line_id=ev.get('line_id') if isinstance(ev,dict) else None
+                raise ValueError('Evidence quote must occur verbatim in source line; line_id='+str(line_id)+'; exact_source_line='+json.dumps(lines.get(line_id),ensure_ascii=False)+'; do not concatenate adjacent lines')
     data = result['data']; stage = expected['stage']
     if not isinstance(data, dict):
         raise ValueError('data must be an object')

@@ -1,19 +1,15 @@
 # Architecture and current limits
 
 ```text
-CLI / Python API
-  -> Config (immutable scene + script + three selected adapters)
-  -> Engine
-       scene/current authored script + observations
-       -> Reasoner.propose -> Reasoner.audit
-       -> persistent action retain/change gate
-       -> Reasoner.perform (same action -> delivery + motor)
-       -> Voice.synthesize -> PCM chunk
-       -> Face.render (same plan + same audio clock)
-       -> journal + output artifacts + technical feedback
+prepare -> whole-script analysis + connected line score (once)
+review -> source/temporal/semantic consistency inspection (no rewritten interpretation)
+Config -> SHA-bound preparation + passed review
+Engine -> PreparedReasoner lookup -> action gate -> perform(vocal + motor)
+       -> optional Voice/Face -> artifacts and lineage
+plan checkpoints -> restore successful prefix -> resume failed line
 ```
 
-UI, RunPod API client, training loop and download manager are intentionally absent.
+The core stays headless. A separate opt-in loopback observer shows preparation/review/performance states. RunPod API client, training loop and download manager are absent.
 The actor engine is ordinary Python and runs in an operator-prepared local or
 RunPod environment. Heavy inference and checkpoint formats belong to adapters.
 
@@ -36,8 +32,7 @@ checkpoints rather than interrupting an in-flight utterance.
 The journal records actual engine requests, returned values, gate decisions,
 committed plans, PCM metadata, frame metadata and explicit termination/failure.
 It does not reconstruct hidden model thoughts or pretend to be a Python line
-debugger. Consumers can subscribe or read JSONL. An optional future UI can consume
-this stream without modifying actor logic.
+debugger. Consumers can subscribe or read JSONL. The optional inspector consumes saved checkpoints without changing actor decisions.
 
 Every chunk/frame references the committed plan. Relative voice sample positions
 are converted to one run clock. Non-contiguous PCM, mixed sample rates, nonfinite
@@ -64,7 +59,27 @@ deletion is implemented.
 
 `yuldion.tools.action_verbs` is a separate, explicitly invoked rehearsal CLI
 (`yuldion-action-verbs`). It has its own human approval workflow and model-server
-configuration. Actor core modules never import it or wait for its stage approvals.
+configuration. Core imports stay isolated when preparation is not explicitly selected. Automatic preparation explicitly reuses its scheduler and source validators but never creates human approvals.
 Its analysis is one optional acting method, not the definition of the engine's
 reasoning process. There is no automatic conversion of its state into an engine
 Scene/Plan, and no dependency on the separate script-analyzer repository.
+
+## Review and realization
+
+Normal prepared execution requires a passed semantic review tied to the exact preparation SHA. Review issues block execution; a model review is not independent or human validation. Structured vocal controls are rendered into the existing delivery string. Motor may vary while the action ID remains stable. The supported checkpoint/resume scope is preparation, review and performance planning; audio/frame partial resume is not implemented.
+
+## Adapter readiness and independent output dispatch
+
+Voice and face capabilities declare exact transport support, not measured acting
+or acoustic/visual effects. Preflight, requested values, delivery receipts and
+backend application reports are separate journal events. Unknown controls are
+not promoted to verified support; explicitly unsupported active controls stop
+before synthesis. Dedicated ports may apply stricter range/opt-in checks.
+
+The default media engine uses a bounded independent face consumer. A PCM sink
+can receive original chunks before face work; it owns actual playback scheduling.
+An overloaded face queue drops visual requests explicitly, never audio samples.
+A full-utterance face model declares audio_context=utterance and receives only
+complete PCM with audio_complete=True on the original run sample clock. This
+preserves noncausal model requirements and is not online face inference.
+The default headless run saves artifacts; it does not play speakers or displays.

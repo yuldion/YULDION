@@ -64,6 +64,7 @@ class Context:
     previous_motor: Mapping[str, Any] | None
     technical_feedback: Mapping[str, Any]
     partner_outcome: str = "unobserved"
+    preparation: Mapping[str, Any] | None = None
 
 @dataclass(frozen=True)
 class Performance:
@@ -71,6 +72,7 @@ class Performance:
     motor: Mapping[str, Any]
     pause_ms: int = 0
     breath: bool = False
+    vocal: Mapping[str, Any] | None = None
 
 @dataclass(frozen=True)
 class Plan:
@@ -86,6 +88,7 @@ class Plan:
 class SpeechRequest:
     text: str
     plan: Plan
+    control_report: Mapping[str, Any] | None = None
 
 @dataclass(frozen=True)
 class AudioChunk:
@@ -99,6 +102,8 @@ class FaceRequest:
     plan: Plan
     audio: AudioChunk
     global_sample_start: int  # Common run audio clock; no invented wall-clock timing.
+    control_report: Mapping[str, Any] | None = None
+    audio_complete: bool = False  # True only for an entire completed speech request.
 
 @dataclass(frozen=True)
 class FaceFrame:

@@ -13,7 +13,7 @@ def validate_provider(options):
     if provider not in ('openai', 'local'):
         raise ValueError('provider must be openai or local')
     allowed = {'provider','endpoint','model','api_key_env','response_format_mode',
-               'request_timeout_seconds','response_schema'}
+               'request_timeout_seconds','response_schema','max_output_tokens'}
     if set(options)-allowed:
         raise ValueError('Unknown provider option; credentials belong in environment variables')
     model = options.get('model')
@@ -42,6 +42,8 @@ def validate_provider(options):
     timeout = options.get('request_timeout_seconds',120)
     if type(timeout) not in (int,float) or not math.isfinite(timeout) or not 1<=timeout<=180:
         raise ValueError('request_timeout_seconds must be in 1..180')
+    maximum=options.get('max_output_tokens',1800)
+    if type(maximum) is not int or not 128<=maximum<=8192:raise ValueError('max_output_tokens must be 128..8192')
     return options
 
 

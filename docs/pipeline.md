@@ -1,224 +1,220 @@
-# OpenAI / 로컬 모델 선택 파이프라인
+# 전체 분석 → 검수 → 연기 파이프라인
 
-YULDION은 독립 AI 배우 엔진입니다. 해석 제공자를 바꾸어도 같은 대본·상황,
-원문 근거 검사와 실행 기록 형식을 사용합니다. 행동동사 분석 CLI는 별도 선택 도구이며
-이 파이프라인의 필수 단계가 아닙니다.
+핵심 엔진은 Python 3.11 이상과 표준 라이브러리만 필요합니다. 모델 가중치·개인 음성·얼굴
+자료는 포함하지 않습니다. OpenAI는 사용자 API 키와 이용료가 필요하며, 로컬 모델은
+사용자가 별도 준비한 서버를 선택합니다. 이 명령들은 학습·다운로드·팟 생성을 하지 않습니다.
 
 ```text
-설치 → 제공자 선택/init → 설정 검사/check
-  ├─ interpret: 첫 대사 → 전체 구절 읽기/구절 관계 → 해석·의도 → 근거 감사 → JSON 기록
-  └─ run: 같은 해석 어댑터 → 행동 유지/전환 → 발성/motor 지시 → 음성 → 얼굴 → 실행 기록
+prepare: 전체 원문과 주어진 상황 → 원래 분석 순서 → 모든 줄의 뜻·의도·행동 연결
+review:  원문/시간 순서/가설·사실/전환 필요성 검사 → 통과 또는 수정 필요
+plan:    검수된 score 조회 → perform(발성·표정·시선) → 줄마다 체크포인트
+run:     같은 검수된 계획 → 명시적으로 연결한 음성·얼굴 어댑터 → 실제 출력
 ```
 
-**현재 바로 시험할 수 있는 범위는 해석 전용 경로입니다.** 전체 배우 실행에는 별도로
-준비한 음성·얼굴 어댑터가 필요합니다. 설치만으로 학습 중인 모델에 연결하지 않습니다.
+실행 시 대사의 뜻·의도·행동을 다시 만들지 않습니다. `read_text/propose/audit` 모델
+호출은 실행 경로에서 사용하지 않고, 준비된 항목의 구조 확인과 `perform`만 수행합니다.
+예상하지 못한 외부 자극은 명시적 준비 수정이 필요하다고 중단하며 자동 재분석하지 않습니다.
 
-## 1. 설치
-
-Python 3.11 이상. 핵심 엔진과 CLI는 Python 표준 라이브러리만 사용합니다.
+## 설치와 제공자 선택
 
 ```bash
-git clone https://github.com/yuldion/YULDION.git
-cd YULDION
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
-yuldion pipeline --help
-```
-
-Windows PowerShell의 가상환경 활성화는 `.venv\Scripts\Activate.ps1`입니다.
-배우 엔진/파이프라인은 플랫폼 중립 Python이며, 선택 행동동사 도구의 파일 잠금은
-macOS/Linux(Windows는 WSL) 기준입니다. 로컬 모델 실행기는 OS에 맞게 별도 설치합니다.
-`yuldion-pipeline`과 `python -m yuldion.pipeline`도 같은 하위 명령을 제공합니다.
-
-## 2A. OpenAI 선택
-
-```bash
-yuldion pipeline init --provider openai --model gpt-4.1 \
-  --scene examples/hamlet.json --config private/openai.local.json
-# 통신 없이 설정·키 존재만 검사
+yuldion pipeline init --provider openai --scene examples/hamlet-soliloquy.json \
+  --config private/openai.local.json
+# 또는 이미 준비한 로컬 서버 선택
+yuldion pipeline init --provider local --scene examples/hamlet-soliloquy.json \
+  --config private/local.local.json --endpoint http://127.0.0.1:8080/v1/chat/completions
 yuldion pipeline check --config private/openai.local.json
 ```
 
-키가 없으면 check 종료 코드 2가 정상입니다. 키 값을 설정 파일에 넣지 마세요.
-실행 시 아래처럼 숨김 입력을 사용할 수 있습니다. 키는 이번 프로세스에서만 사용하고
-설정·로그·결과 파일에 저장하지 않습니다.
+check는 구조·키 존재만 검사합니다. 연결이나 모델 추론의 성공을 보장하지 않습니다.
+키는 `OPENAI_API_KEY` 환경변수나 실행 시 `--prompt-api-key` 숨김 입력으로 제공합니다.
+키 값은 설정·요청 로그·manifest에 저장하지 않습니다. API 키를 채팅에 보내지 마세요.
+
+기존 GGUF와 llama.cpp를 명시적으로 실행하려면 별도 준비된 환경에서:
 
 ```bash
-yuldion pipeline interpret --config private/openai.local.json --prompt-api-key
+yuldion pipeline serve-local --model-path /path/to/existing/model.gguf --context-size 32768
 ```
 
-이미 `OPENAI_API_KEY` 환경변수를 설정한 환경에서는 `--prompt-api-key` 없이 실행합니다.
-`init --api-key-env MY_KEY_ENV`로 다른 환경변수 이름을 선택할 수 있습니다.
-`--model`은 사용 가능한 API 모델 ID이며 기본 예제는 `gpt-4.1`입니다. 임의의 모델이
-현재 전송 매개변수(`temperature`, `max_tokens`, Chat Completions)를 모두 지원한다고
-보장하지 않습니다. 다른 모델은 호환성을 확인하세요.
+기본은 CPU 4 threads, GPU layers 0입니다. context 확대는 메모리를 사용하므로 준비된
+환경에 맞게 선택하세요. 자동 다운로드나 학습 GPU 공유는 하지 않습니다. 로컬 제공자는
+loopback 주소만 허용하며 원격 서버는 운영자가 SSH 터널로 연결해야 합니다.
 
-OpenAI 모드는 공식 `https://api.openai.com/v1/chat/completions`만 사용합니다.
-대본과 생성된 분석을 외부 API에 전송하며 사용자의 API 계정에 비용이 발생합니다.
-프로그램 소스의 MIT 공개와 API/모델 이용 조건·과금은 별개입니다.
-이 저장소가 공용 API 키나 무료 API 사용권을 제공하지 않습니다.
-
-[공식 OpenAI 구조화 응답 문서](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=chat)에
-맞춰 JSON 모드를 사용합니다. 로컬 tuple JSON Schema를 OpenAI에 그대로 보내지 않습니다.
-JSON 모드는 구체적 스키마나 해석 타당성을 보장하지 않으므로 동일 Python 검사를
-별도로 적용하며 실패 시 다른 제공자로 자동 전환하거나 응답을 고쳐 채택하지 않습니다.
-
-## 2B. 로컬 Qwen + llama.cpp 선택
-
-로컬 해석은 유료 외부 모델 API 없이 직접 실행합니다. 장비/서버 비용과 모델
-라이선스는 별개입니다. 이 프로젝트가 llama.cpp 또는 모델 가중치를 포함하지 않습니다.
-
-1. [llama.cpp 공식 배포](https://github.com/ggml-org/llama.cpp/releases)에서 OS/CPU에 맞는
-   실행기를 설치하거나 [공식 빌드 안내](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md)를 따릅니다.
-2. [Qwen 공식 GGUF](https://huggingface.co/Qwen/Qwen3-8B-GGUF)에서 `Qwen3-8B-Q4_K_M.gguf`를
-   선택해 모델 보관 위치에 받습니다. 약 5GB의 모델 파일과 추가 실행 메모리가 필요합니다.
-   용량·버전·SHA-256과 사용 모델의 라이선스를 확인하세요. 큰 모델과 GPU 환경은
-   준비된 RunPod 영구 스토리지를 우선 사용하고 학습 작업과 자원을 분리하세요.
-3. **이번 추론을 위해 따로 준비한 환경**에서 명시적으로 서버를 시작합니다.
+## 정상 실행 순서
 
 ```bash
-# 첫 터미널: 기존 GGUF만 로딩. 다운로드/학습/팟 생성 없음.
-yuldion pipeline serve-local --model-path /workspace/models/Qwen3-8B-Q4_K_M.gguf \
-  --model-id yuldion-qwen3-8b --port 8080
+yuldion pipeline prepare --config private/openai.local.json --prompt-api-key \
+  --output-dir outputs/analysis-01 --bound-config private/prepared.local.json --allow-draft
+yuldion pipeline review --config private/prepared.local.json --prompt-api-key \
+  --output-dir outputs/review-01 --bound-config private/reviewed.local.json
+yuldion pipeline plan --config private/reviewed.local.json --prompt-api-key \
+  --output-dir outputs/plans-01
 ```
 
-`llama-server`가 PATH에 없으면 `--binary /path/to/llama-server`를 지정합니다.
-기본값은 CPU 4 threads, GPU layer 0, context 4096, slot 1입니다.
-전용 GPU 또는 Apple Metal 환경에서 GPU를 사용하려면 `--gpu-layers 99`를 명시합니다.
-학습 중인 GPU에 자동으로 얹지 않습니다. 서버는 전경에서 실행하며 종료는 해당
-터미널의 Ctrl+C로 합니다. 다른 작업의 모델/프로세스를 종료하거나 정리하지 않습니다.
+prepare는 욕구·목표·관계·상황·장애물 → 유닛 → 상황·자극 → 반응·목표·행동 후보
+→ 후보 선별·행위 연결 → 종합표 순서를 재사용하고, 원문 모든 줄의 의미·의도·행동을
+연결해 저장합니다. 신체화 시험·사용자 설정 행위·촬영 검증은 미수행으로 남깁니다.
+`--allow-draft`는 생성 가설 사용이며 사람의 승인도, 의미 검수 우회도 아닙니다.
 
-실제 해석에 사용한 실행기 버전은 **llama.cpp b11718**입니다. `--reasoning off`, Jinja,
-chat-completions와 tuple schema 지원이 필요한 경로입니다. 다른 버전은 호환성을
-검사해야 합니다. 일부 local compatible 서버는 strict schema가 다를 수 있습니다.
+줄은 화면과 실행의 추적 단위입니다. 단독 문장으로만 해석하지 않고 전체 문법·유닛
+맥락에서 준비합니다. 유닛 경계만으로 행동을 바꾸지 않습니다. retain에서는 의도와
+행동을 그대로 이어받고, change에는 현재 원문에 근거한 발견과 기존 행동의 부족함이 필요합니다.
+
+review는 새 해석을 쓰지 않습니다. 원문과 전체 준비 결과를 한 번에 읽고 모든 줄을
+검사한 목록과 지적 사항만 반환합니다. 근거 없는 단정·미래 정보 선반영·정당화되지 않은
+행동 전환·사실/가설 혼동을 점검합니다. issues가 있으면 `needs_revision`으로 저장하고
+연기 설정을 만들지 않습니다. 누락된 검수·실패한 검수도 실행할 수 없습니다.
+같은 모델의 검수는 독립적인 예술적 평가나 해석의 객관적 진실을 보장하지 않습니다.
+
+분석과 검수 결과를 각각 SHA-256으로 묶어 연결합니다. 원문·장면·준비 분석·검수 결과가
+바뀌면 기존 연결을 거부하며 새 설정에 연결해야 합니다. 기존 미검수 실행 기록은 보존하지만
+새 경로에 자동으로 통과시키지 않습니다. v1 분석에는 연결된 score가 없어 새 준비가 필요합니다.
+
+## 수정 필요 결과 처리
+
+검수 지적을 검토해 준비 문서의 해당 가설을 수정한 **새 사본**을 만듭니다. 원문과 완료된
+전체 분석을 다시 생성하지 않습니다. 행동을 수정하면 뒤의 retain 항목도 일관되게 고쳐야 합니다.
+원문이나 목표/관계까지 바뀌는 경우에는 다른 준비 작업으로 취급합니다.
 
 ```bash
-# 두 번째 터미널: 같은 가상환경을 활성화한 후
-yuldion pipeline init --provider local --model yuldion-qwen3-8b \
-  --endpoint http://127.0.0.1:8080/v1/chat/completions \
-  --scene examples/hamlet.json --config private/local.local.json
-yuldion pipeline check --config private/local.local.json
-yuldion pipeline interpret --config private/local.local.json
+yuldion pipeline bind --config private/openai.local.json \
+  --preparation private/revised-preparation.json --bound-config private/revised.local.json --allow-draft
+yuldion pipeline review --config private/revised.local.json --prompt-api-key \
+  --output-dir outputs/review-02 --bound-config private/reviewed-02.local.json
 ```
 
-로컬 모드는 loopback HTTP 주소만 허용하고 외부 API 키를 붙이지 않습니다.
-환경변수의 HTTP proxy도 이 모드에서는 사용하지 않습니다. RunPod 내부에서는
-서버와 YULDION을 같은 준비된 추론 환경에서 실행하면 됩니다. 다른 컴퓨터에서
-접속하려면 SSH 터널을 사용합니다. 예를 들어 이미 접속 가능한 서버에 대해:
+수정 전 분석·검수·실패 응답은 덮어쓰지 않습니다. 프로그램이 지적 사항을 몰래 고쳐
+통과 처리하거나 사람이 확인했다고 기록하지 않습니다.
+
+## 실패한 단계만 재개
+
+출력 디렉터리는 새로 지정합니다. 이전 파일은 보존하고 입력 해시와 성공한 접두 기록을
+검증한 뒤 이어받습니다.
 
 ```bash
-ssh -N -L 8080:127.0.0.1:8080 your-prepared-inference-host
+# 전체 분석 중 실패: 검증된 이전 단계와 줄별 score 재사용
+yuldion pipeline prepare --config private/openai.local.json --prompt-api-key \
+  --resume-from outputs/analysis-01/preparation.json --output-dir outputs/analysis-retry \
+  --bound-config private/prepared-retry.local.json --allow-draft
+# 의미 검수 통신/형식 실패: 전체 분석 재호출 없이 검수만 재개
+yuldion pipeline review --config private/prepared.local.json --prompt-api-key \
+  --resume-from outputs/review-01/review.json --output-dir outputs/review-retry \
+  --bound-config private/reviewed-retry.local.json
+# 연기 지시 실패: 동일 검수·분석으로 성공한 줄을 복원하고 실패 줄부터 재개
+yuldion pipeline plan --config private/reviewed.local.json --prompt-api-key \
+  --resume-from outputs/plans-01/result.json --output-dir outputs/plans-retry
 ```
 
-위 호스트는 자리표시자이며 기존 학습 서버를 자동 선택하지 않습니다. 인증 없는
-모델 서버를 공용 인터넷에 노출하지 않습니다. 모델 다운로드/서버 실행은 자동
-시작되지 않으며, `init`/`check`는 GPU·네트워크 추론을 호출하지 않습니다.
+연기 지시는 성공한 줄마다 `result.json`과 `next_segment`를 저장합니다. 재개 시 이전
+의도·행동 ID·해석·motor·발견 상태를 복원하며, 발화나 상대 반응을 관측한 것처럼 만들지 않습니다.
+재개 범위·분석/검수/장면 해시가 다르거나 저장된 접두 계획이 바뀌면 거부합니다.
+검수의 `needs_revision`은 통신 실패가 아니므로 그대로 재요청하지 않고 먼저 수정해야 합니다.
 
-## 3. 같은 입력으로 두 모드 비교
+HTTP 상태 코드·재시도 가능 여부·Retry-After를 보존합니다. 401/403 등은 키/권한 수정을,
+429나 일시 서버 장애는 대기 후 해당 단계 재개를 안내합니다. 요청 본문에 든 키나 서버 오류
+본문은 오류 메시지에 복사하지 않습니다. 자동 무제한 재시도·제공자 전환은 없습니다.
+프로세스가 응답을 저장하기 전에 강제 종료되면 원격 요청의 완료·과금을 확정할 수 없습니다.
+이 경우 재요청이 완전히 중복되지 않는다고 보장할 수 없습니다.
 
-각 제공자로 만든 설정의 scene/script가 같으면 `interpret`가 같은 첫 대사를 보냅니다.
-각 실행은 새로운 출력 디렉터리를 만들므로 서로 덮어쓰지 않습니다.
-명시한 결과 위치도 이미 존재하면 거부합니다.
+## 발성·표정·시선
+
+모델은 vocal의 `pace`, `volume`, `pitch`, `articulation`, `stress`를 반환합니다. 발음
+설명에 대사를 그대로 넣거나 강세가 현재 원문에 없는 말을 인용하면 거부합니다. 구조화
+컨트롤에서 기존 어댑터용 `Performance.delivery`를 구성하므로 발성 필드가 대사로 대체되지 않습니다.
+같은 행동 아래에서도 표정·시선·호흡이 달라질 수 있습니다. 이전 motor는 연속성 맥락이며
+동일하게 복사해야 하는 값이 아닙니다. 관계 대상은 유지합니다.
+
+실제 효과는 선택 backend의 컨트롤 규격과 연기 평가로 별도 검증해야 합니다. 자연어 motor는
+실제 얼굴 좌표가 아니며, 구조 통과가 자연스러운 움직임을 보장하지 않습니다.
+
+## 관찰 화면
 
 ```bash
-yuldion pipeline interpret --config private/openai.local.json --prompt-api-key \
-  --output-dir outputs/openai-first-line
-yuldion pipeline interpret --config private/local.local.json \
-  --output-dir outputs/local-first-line
+PYTHONPATH=src python3 -m yuldion.tools.inspector.server \
+  --config private/openai.local.json --port 8794
 ```
 
-각 디렉터리에는 다음이 생깁니다.
+http://127.0.0.1:8794 에서 전체 분석/구조 검사/의미 검수/연기 지시/실제 미디어 상태를
+따로 표시합니다. 버튼은 현재 상태에 맞게 실패한 분석, 의미 검수, 연기 지시 중 하나만 재개합니다.
+완료한 분석이 있으면 재생성하지 않습니다. 검수 지적이 있으면 표시하고 실행을 막습니다.
+이전 미검수 계획은 `이전 미검수 기록`으로 구분하며 새 검수된 계획으로 세지 않습니다.
 
-- `input.json`: 첫 대사, 장면 설정, 비밀값 없는 제공자 옵션.
-- `result.json`: 원문 읽기, 앞뒤 구절 관계, 해석·의도·근거, 감사, 실제 모델 요청·응답·사용량·시간.
-- `manifest.json`: 실행 ID, 제공자/요청 모델/응답 모델, 코드 commit(소스 checkout인 경우),
-  실행 소스 SHA-256, 입력·결과 SHA-256, 성공/실패·미채택·백업 미검증 상태.
+키는 숨김 입력하고 관찰 서버 메모리에 유지하며 자식 프로세스 환경으로 전달합니다. 서버는 loopback 전용이고,
+다른 사이트에서 키 없이 실행 요청을 보내지 못하도록 Host/Origin/토큰을 검사합니다.
+기본 전체 분석은 최대 160회/900초, 검수는 별도 한 요청, 연기 지시는 전체 대본입니다.
+검수 결과 길이를 위해 검수 요청은 기본 최대 출력 토큰 4096(설정 범위 128..8192)을 사용합니다.
+서버 창을 닫는 것이 원격 API 실행까지 즉시 취소한다는 뜻은 아닙니다.
 
-실제 모델 가중치 SHA는 HTTP 응답만으로 확인할 수 없어 `not_supplied`로 기록합니다.
-로컬 모델의 별도 보관 manifest에 정확한 가중치 SHA와 런타임 버전을 연결하세요.
-코드 hash는 설치 패키지에서도 기록하므로 Git이 없어도 실행 코드 비교가 가능합니다.
-출력은 대본과 사적 해석을 포함하므로 기본 `outputs/`와 `private/`를 Git에서 제외합니다.
-
-종료 코드 0은 생성·검사가 끝난 상태이며, 2는 설정/키/통신/출력 형식/근거 검사의
-실패 또는 grounded=false입니다. 실패 시 상태와 수신된 응답을 보존하며 채택본으로
-가짜 대체하지 않습니다. 네트워크 또는 JSON 파싱 전에 실패한 응답 본문은 보존하지
-않습니다. 사용자 중단은 130입니다. 같은 모델 감사는 독립 검증이 아니며 성공 코드가
-정답·연기 품질·사용자 채택·실제 장치 재생을 보장하지 않습니다.
-
-`check` 성공은 설정·키 존재 검사만 통과했다는 뜻입니다. 연결이나 모델 로딩은
-검사하지 않습니다. `interpret`는 **첫 대사만**, 음성·얼굴 로드 없이 실행합니다.
-준비된 장면 목표와 관계는 리허설 가설이며 자동으로 사용자 확정 분석이 되지 않습니다.
-
-## 4. 음성·얼굴이 준비되면 전체 배우 실행
-
-같은 private 설정의 `adapters.voice`와 `adapters.face`를
-[모델 포트 규격](model-ports.md)에 맞는 별도 설치 어댑터로 연결합니다.
-모델 선택은 실행 사이에 설정을 바꾸는 방식이며 학습 파일을 수정하지 않습니다.
+## 실제 음성·얼굴 출력과 검증 범위
 
 ```bash
-yuldion pipeline run --config private/local.local.json --max-seconds 300
-# OpenAI 설정을 선택한 경우
-yuldion pipeline run --config private/openai.local.json --prompt-api-key --max-seconds 300
+yuldion pipeline run --config private/reviewed.local.json --prompt-api-key --max-seconds 300
 ```
 
-전체 실행은 기존 엔진의 행동 유지/전환, 공통 오디오 시계, PCM/얼굴 출력 계약을
-사용합니다. 음성·얼굴이 미연결이면 추론 전에 실패하며 fake output으로 진행하지
-않습니다. 현재 실제 모델 3종을 연결한 전체 실행과 연기 품질은 검증되지 않았습니다.
-얼굴 포트에는 새로운 해석·의도를 실제 표정·시선 좌표로 바꾸는 backend가 필요합니다.
-연기 지시의 motor 좌표계도 해당 backend와 합의해야 합니다.
+명시적으로 연결한 음성·얼굴 어댑터가 필요합니다. 미연결이면 출력 실행을 막습니다.
+prepare/review/plan/관찰 화면은 음성·얼굴 모델을 로드하지 않습니다. 원격 학습 환경을
+수정하거나 종료하지 않습니다. 현재 체크포인트 재개는 분석·검수·연기 지시까지이며,
+실제 PCM/영상의 중간 프레임 재개는 지원하지 않습니다.
 
-## 테스트와 검증 상태
+단편 비교용 `interpret --diagnostic-reanalyse`는 별도 진단입니다. 정상 연기 경로에 넣지 않습니다.
+공개 예제는 `To be, or not to be`부터 `Be all my sins remember’d`까지 원문을 포함합니다.
+원문은 [Project Gutenberg Hamlet](https://www.gutenberg.org/files/1524/1524-0.txt)을 사용했습니다.
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-테스트는 제공자 선택, 외부 전송 경계, 키 부재, 실제 loopback HTTP 연결(테스트 전용
-응답), OpenAI 요청 형식(mock), 원문 근거·관계·의도 검사, 실패 보존, 중복 출력 방지를
-검증합니다. loopback socket 생성을 허용하는 환경에서 실행해야 합니다.
-Qwen3-8B Q4_K_M + llama.cpp b11718의 실제 첫 대사/전체 구절 읽기는 별도로 실행해
-확인했습니다. OpenAI는 API 키가 없어 실제 계정 호출을 수행하지 않았습니다.
-GitHub 코드 업로드, 모델 실행, 사용자 채택, Drive 백업은 각각 별개 상태입니다.
+테스트는 테스트 전용 응답을 사용합니다. 실제 모델의 해석·검수 품질, 음성 청취·얼굴 지각 평가,
+GitHub 업로드와 Drive 백업은 각각 별도로 확인해야 합니다. 결과는 기본 Git 제외 outputs/private에 저장됩니다.
 
-## 독백 전체를 읽고 특정 구절 해석하기
 
-```bash
-yuldion pipeline init --provider openai --scene examples/hamlet-soliloquy.json \
-  --config private/openai-soliloquy.local.json
-yuldion pipeline interpret --config private/openai-soliloquy.local.json \
-  --context full-script --focus-index 1 --prompt-api-key
-```
+### 관찰 서버의 키와 형식 오류 재시도
 
-`--context full-script`는 설정의 script 전체를 준비 맥락으로 모델에게 전달합니다.
-`--focus-index 1`은 그중 두 번째 입력 구간을 현재 해석 대상으로 지정합니다.
-이 예제는 To be, or not to be부터 Be all my sins remember’d까지 독백 35줄 전체를
-포함하고, 현재 대상은 원문 판본의 `To die—to sleep,\nNo more`입니다. 이전 입력의
-쉼표·대시는 판본과 달랐으며 여기서는 아래 출처의 구두점을 유지합니다.
-입력 배열 3조각은 대상 구절을 지정하기 위한 텍스트 분할이며 심리적 유닛 확정이 아닙니다.
+화면에서 한 번 입력한 OpenAI 키는 관찰 서버 프로세스의 메모리에 유지됩니다.
+페이지를 새로고침하거나 실행이 완료·실패해도 재입력할 필요가 없습니다.
+`키 연결`은 실행 없이 키를 연결하고, `키 지우기`는 다음 실행에 사용할 세션 키를
+해제합니다. 서버 재시작 시 다시 입력합니다. 이미 실행 중인 작업의 인증은
+해제 버튼으로 취소되지 않습니다. 키는 파일·브라우저 저장소·로그에 저장하지
+않으며 상태 응답에는 연결 여부만 포함합니다. 서버 환경변수로 설정한 키는
+별도 설정이므로 세션 키 지우기의 대상이 아닙니다.
 
-전체 대본은 배우/리허설의 준비 정보이고, 뒤 대사의 발견이 현재 인물에게 이미
-일어난 사건은 아닙니다. 모델 프롬프트와 결과 기록에서 준비 맥락과 현재 대사를
-구분합니다. 이 구분의 실제 연기 타당성은 검수가 필요합니다.
-기본 `--context current-line`은 여전히 선택 구간만 보내는 비교용 경로입니다.
-이 옵션은 해석 전용 interpret/probe에 적용하며 전체 배우 run에 준비 대본을
-자동 주입하는 기능은 아닙니다.
+연기 지시의 JSON 모양·발성 값·멈춤/호흡 형식 오류는 같은 줄에 대해
+최대 3회(최초 요청 + 수정 요청 2회) 시도합니다. 거절된 원응답과 오류는
+실행 기록에 남기고, 검수된 뜻·의도·행동과 앞서 완료된 줄은 유지합니다.
+통신·인증·요금 오류나 의미 검수 지적을 형식 수정으로 덮어쓰지 않습니다.
+3회 모두 실패하면 해당 줄에서 멈추며, 연결된 키로 그 줄부터 재개할 수 있습니다.
 
-공개 원문: William Shakespeare, Hamlet, Act III Scene I,
-[Project Gutenberg ebook 1524](https://www.gutenberg.org/files/1524/1524-0.txt).
-`examples/hamlet-soliloquy.txt`는 해당 독백 원문이고, JSON은 그 원문을 입력용으로
-분할한 파일입니다. 현대 번역이나 편집자의 해설은 포함하지 않습니다.
+완료된 연기 지시 뒤로 이어가려면 `pipeline plan --config <reviewed-config> --output-dir <new-directory> --segments 12 --extend-from <completed-result.json>`을 사용합니다. 같은 분석·검수 해시와 연속된 기존 계획을 검증한 뒤 새 줄만 호출합니다. 실패 기록의 `--resume-from`은 기존 범위를 유지하며 재개합니다. 관찰 화면에서는 완료된 접두 계획 다음을 대본 끝까지 이어갑니다.
 
-숨김 키 입력부터 위 독백 실행까지 한 번에 시작하려면 저장소 루트에서:
 
-```bash
-bash scripts/run_openai_soliloquy.sh
-```
+### 한 번 시작하는 전체 실행과 자동 복구
 
-이 스크립트는 별도 키 파일을 만들지 않습니다. 기존 private 설정은 덮어쓰지 않으며,
-환경변수 키가 없을 때만 숨김 입력을 요청합니다. `YULDION_PYTHON`으로 Python 실행기를
-선택할 수 있습니다. 이 Mac에서 기본 Python CA 연결이 실패하는 문제는
-`SSL_CERT_FILE=/etc/ssl/cert.pem`으로 확인했으며, 스크립트는 별도 CA 설정이 없고
-시스템 CA 파일이 있을 때만 이를 사용합니다. TLS 검증을 끄지 않습니다.
-API 키가 설정되지 않은 현재 단계에서는 생성 결과가 아직 없습니다. 터미널에서 실행하면
-실제 OpenAI 호출 후 `outputs/interpret-.../result.json`에 해석·의도를 보존합니다.
+관찰 서버의 기본 작업은 전체 대본 분석 → 의미 검수 → **대본 끝까지** 연기
+지시 생성입니다. 기존에 완료된 분석·검수·계획이 있으면 해시를 확인하여
+재사용하며, 7줄/12줄에서 사용자의 재실행을 기다리지 않습니다.
+작업 감독자는 복구 가능한 저장 오류 기록을 보고 최대 3개 실행 시도를
+관리합니다. 429·일시적인 연결/타임아웃·일부 서버 오류는 지연 후 실패 단계만
+재개합니다. 모델 응답 형식 오류는 같은 줄에서 최대 3회 먼저 요청한 뒤,
+필요하면 감독자가 저장된 해당 줄부터 재개합니다. 재시도 이력과 원응답은
+보존됩니다. 인증 실패·의미 검수 수정 필요·소스 또는 해시 불일치는 자동
+복구하지 않습니다. 복구 한도에 도달하면 실패 위치를 남깁니다.
+각 작업 시도는 별도 하위 폴더에 저장되고, 상위 job.json이 현재 시도를
+가리킵니다. 키는 관찰 서버 메모리에서 하위 작업 환경으로 전달하므로
+작업 재개 때 다시 입력하지 않습니다. 관찰 서버 자체를 종료·재시작하면
+메모리 키는 사라집니다. 운영체제 강제 종료나 호스트 재부팅의 무인 복원은
+이 기능의 범위가 아닙니다.
+
+
+### 실제 API 장애 복구 검증
+
+관찰 화면의 `실제 API 오류 복구 검증`은 기존 검수된 첫 12줄을 보존하고
+13줄부터 끝까지 실제 API를 호출합니다. 18번째 줄에서 실제 응답을 받은 직후
+로컬 연결 예외를 정확히 한 번 주입합니다. 해당 응답과 영수증은 별도 파일에
+보존하고 계획에는 반영하지 않습니다. 감독자가 18줄부터 자동 재개하며,
+화면에는 실제 호출 수·시도별 줄 번호·오류 주입·보존 및 완료 검증을 표시합니다.
+외부 OpenAI 서버의 장애를 유발하는 테스트가 아니라 클라이언트가 응답을 받은
+직후 연결이 끊긴 상황을 재현하는 테스트입니다. 분석·의미 검수는 재호출하지
+않고 음성·얼굴 모델도 로드하지 않습니다. 이 버튼은 새로운 API 사용량을 발생시킵니다.

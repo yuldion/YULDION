@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yuldion-engine"
-version = "0.2.1"
+version = "0.3.0"
 description = "Independent headless AI actor engine with replaceable model adapters"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,3 +22,6 @@ yuldion-action-verbs = "yuldion.tools.action_verbs.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"yuldion.tools.inspector" = ["index.html"]

@@ -115,3 +115,24 @@ class ChatReasonerTest(TestCase):
         answer=self.answer();answer['textual_support'].pop()
         with patch('yuldion.adapters.chat_reasoner.generate',side_effect=[(self.reading(),{}),(answer,{})]):
             with self.assertRaises(ValueError):ChatReasoner({}).propose(self.context(),Event())
+
+    def test_five_line_current_fragment_covers_every_line_and_intention_link(self):
+        from dataclasses import replace
+        from yuldion.types import Observation
+        fragment='First question\nSecond alternative\nThird consequence\nFourth obstacle\nFifth uncertainty'
+        context=self.context()
+        script=Observation('script:0','authored_script',fragment)
+        context=replace(context,script=script,evidence=(*context.evidence[:-1],script))
+        quotes=fragment.splitlines()
+        reading={'observations':[{'quote':q,'reading':'Provisional meaning of '+q} for q in quotes],
+            'relations':[{'earlier_quote':a,'later_quote':b,'effect':'Continues the inquiry',
+                          'not_established':'No resolution established'} for a,b in zip(quotes,quotes[1:])],
+            'not_established':'No chosen outcome'}
+        answer=self.answer()
+        answer['textual_support']=[{'quote':q,'interpretation':'Provisional reading',
+                                   'intention_link':'Invites consideration of this possibility'} for q in quotes]
+        with patch('yuldion.adapters.chat_reasoner.generate',side_effect=[(reading,{}),(answer,{})]) as generate:
+            result=ChatReasoner({}).propose(context,Event())
+        self.assertEqual(result.decision,'initialize')
+        schema=generate.call_args_list[0].args[0]['response_schema']['properties']['observations']
+        self.assertEqual(schema['maxItems'],5)

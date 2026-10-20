@@ -27,6 +27,7 @@ def main(argv=None):
         sub = commands.add_parser(name, help=help_text)
         sub.add_argument("--config", type=Path, required=True)
         if name == "run":
+            sub.add_argument("--face-mode",choices=("async","sync","off"),default="async",help="얼굴 독립 처리(기본), 순차 처리, 또는 얼굴 미로드")
             sub.add_argument("--events", type=Path, help="상대의 실제 텍스트 자극 JSONL")
             sub.add_argument("--max-seconds", type=float, default=300)
             sub.add_argument("--json-events", action="store_true", help="표준 출력에 실제 이벤트 JSONL")
@@ -47,7 +48,7 @@ def main(argv=None):
             for role, spec in config.adapters.items():
                 print(f"  {role}: {spec['kind']}")
             return 0
-        adapters = load_adapters(config)
+        adapters = load_adapters(config,skip_face=args.command=="run" and args.face_mode=="off")
         if args.command == "doctor":
             healthy = True
             for role in ("reasoner", "voice", "face"):
@@ -68,7 +69,8 @@ def main(argv=None):
                 print(f"[{event['sequence']:04d}] {event['type']}", flush=True)
         try:
             directory = Engine(config, adapters, cancel).run(observe,
-                FileStimuli(args.events) if args.events else None, args.max_seconds)
+                FileStimuli(args.events) if args.events else None, args.max_seconds,
+                face_async=args.face_mode=="async",face_enabled=args.face_mode!="off")
             print(f"실행 완료: {directory}", file=sys.stderr)
             return 0
         finally:

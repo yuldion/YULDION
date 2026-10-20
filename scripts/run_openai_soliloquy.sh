@@ -15,5 +15,5 @@ if [[ ! -e "${YULDION_RUN_CONFIG}" ]]; then
     --scene "${YULDION_REPO_DIR}/examples/hamlet-soliloquy.json" \
     --config "${YULDION_RUN_CONFIG}"
 fi
-exec "${YULDION_RUN_PYTHON}" -m yuldion pipeline interpret \
+exec "${YULDION_RUN_PYTHON}" -m yuldion pipeline interpret --diagnostic-unprepared \
   --config "${YULDION_RUN_CONFIG}" --context full-script --focus-index 1 --prompt-api-key

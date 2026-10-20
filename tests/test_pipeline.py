@@ -69,7 +69,7 @@ class PipelineTests(TestCase):
         with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,{},clear=True),patch('urllib.request.build_opener') as network:
             path=self.init(folder,'openai')
             self.assertEqual(self.call(['check','--config',str(path)]),2)
-            self.assertEqual(self.call(['interpret','--config',str(path),'--output-dir',str(Path(folder)/'run')]),2)
+            self.assertEqual(self.call(['interpret','--diagnostic-unprepared','--config',str(path),'--output-dir',str(Path(folder)/'run')]),2)
             self.assertFalse((Path(folder)/'run').exists())
             network.assert_not_called()
 
@@ -91,7 +91,7 @@ class PipelineTests(TestCase):
                 endpoint='http://127.0.0.1:'+str(server.server_address[1])+'/v1/chat/completions'
                 config=self.init(folder,endpoint=endpoint);out=Path(folder)/'run'
                 with patch('yuldion.config.load_adapters',side_effect=AssertionError('Voice/face must not load')):
-                    self.assertEqual(self.call(['interpret','--config',str(config),'--output-dir',str(out)]),0)
+                    self.assertEqual(self.call(['interpret','--diagnostic-unprepared','--config',str(config),'--output-dir',str(out)]),0)
                 result=json.loads((out/'result.json').read_text());manifest=json.loads((out/'manifest.json').read_text())
                 self.assertEqual(result['status'],'completed')
                 self.assertEqual(manifest['provider'],'local')
@@ -100,7 +100,7 @@ class PipelineTests(TestCase):
                 self.assertEqual(manifest['result_sha256'],hashlib.sha256((out/'result.json').read_bytes()).hexdigest())
                 self.assertEqual(len(requests),3)
                 self.assertTrue(all(auth is None for _,auth in requests))
-                self.assertEqual(self.call(['interpret','--config',str(config),'--output-dir',str(out)]),2)
+                self.assertEqual(self.call(['interpret','--diagnostic-unprepared','--config',str(config),'--output-dir',str(out)]),2)
                 self.assertEqual(len(requests),3)
         finally:
             server.shutdown();server.server_close();thread.join(timeout=2)
@@ -117,7 +117,7 @@ class PipelineTests(TestCase):
         with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,{'OPENAI_API_KEY':token}),patch('urllib.request.build_opener') as opener:
             opener.return_value.open.side_effect=respond
             config=self.init(folder,'openai');out=Path(folder)/'run'
-            self.assertEqual(self.call(['interpret','--config',str(config),'--output-dir',str(out)]),0)
+            self.assertEqual(self.call(['interpret','--diagnostic-unprepared','--config',str(config),'--output-dir',str(out)]),0)
             self.assertEqual(len(packets),3)
             self.assertTrue(all(p['response_format']=={'type':'json_object'} for p in packets))
             self.assertTrue(all(any('JSON' in message['content'] for message in p['messages']) for p in packets))
@@ -126,7 +126,7 @@ class PipelineTests(TestCase):
     def test_failed_model_output_is_preserved_without_fallback(self):
         with tempfile.TemporaryDirectory() as folder,patch('yuldion.adapters.chat_reasoner.generate',return_value=({'invalid':'model output'},{})):
             config=self.init(folder);out=Path(folder)/'run'
-            self.assertEqual(self.call(['interpret','--config',str(config),'--output-dir',str(out)]),2)
+            self.assertEqual(self.call(['interpret','--diagnostic-unprepared','--config',str(config),'--output-dir',str(out)]),2)
             result=json.loads((out/'result.json').read_text());manifest=json.loads((out/'manifest.json').read_text())
             self.assertEqual(result['status'],'failed')
             self.assertEqual(result['calls'][0]['response'],{'invalid':'model output'})
@@ -152,14 +152,14 @@ class PipelineTests(TestCase):
     def test_hidden_key_is_removed_after_failure_and_never_written(self):
         with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,{},clear=True),             patch('yuldion.pipeline.getpass.getpass',return_value='test-key-not-real'),             patch('yuldion.adapters.chat_reasoner.generate',side_effect=RuntimeError('test transport failure')):
             config=self.init(folder,'openai');out=Path(folder)/'run'
-            self.assertEqual(self.call(['interpret','--config',str(config),'--prompt-api-key','--output-dir',str(out)]),2)
+            self.assertEqual(self.call(['interpret','--diagnostic-unprepared','--config',str(config),'--prompt-api-key','--output-dir',str(out)]),2)
             self.assertNotIn('OPENAI_API_KEY',os.environ)
             for path in out.iterdir():self.assertNotIn('test-key-not-real',path.read_text())
 
     def test_interrupt_preserves_cancelled_manifest(self):
         with tempfile.TemporaryDirectory() as folder,patch('yuldion.adapters.chat_reasoner.generate',side_effect=KeyboardInterrupt):
             config=self.init(folder);out=Path(folder)/'run'
-            self.assertEqual(self.call(['interpret','--config',str(config),'--output-dir',str(out)]),130)
+            self.assertEqual(self.call(['interpret','--diagnostic-unprepared','--config',str(config),'--output-dir',str(out)]),130)
             self.assertEqual(json.loads((out/'manifest.json').read_text())['status'],'cancelled')
 
     def test_full_script_context_and_selected_fragment_are_distinct(self):
@@ -173,7 +173,7 @@ class PipelineTests(TestCase):
             config=Path(folder)/'full.local.json';out=Path(folder)/'run'
             full=EXAMPLE.parent/'hamlet-soliloquy.json'
             self.assertEqual(self.call(['init','--scene',str(full),'--provider','local','--config',str(config)]),0)
-            self.assertEqual(self.call(['interpret','--config',str(config),'--context','full-script',
+            self.assertEqual(self.call(['interpret','--diagnostic-unprepared','--config',str(config),'--context','full-script',
                                         '--focus-index','1','--output-dir',str(out)]),0)
             result=json.loads((out/'result.json').read_text())
             self.assertEqual(result['input']['script']['id'],'script:1')
@@ -189,5 +189,5 @@ class PipelineTests(TestCase):
     def test_out_of_range_focus_never_calls_a_model(self):
         with tempfile.TemporaryDirectory() as folder,patch('yuldion.adapters.chat_reasoner.generate') as model:
             config=self.init(folder)
-            self.assertEqual(self.call(['interpret','--config',str(config),'--focus-index','999']),2)
+            self.assertEqual(self.call(['interpret','--diagnostic-unprepared','--config',str(config),'--focus-index','999']),2)
             model.assert_not_called()

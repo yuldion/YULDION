@@ -1,4 +1,4 @@
-"""Synchronous headless orchestration; model computation lives behind adapters.
+"""Headless orchestration with optional independent PCM/face dispatch; model computation lives behind adapters.
 
 Phrase boundaries are safe checkpoints, not reasons to change action. This is
 not a low-latency playback server. Event/artifact timestamps distinguish model
@@ -33,6 +33,8 @@ def normalized(value):
 
 class Engine:
     def __init__(self, config: Config, adapters: Adapters, cancel: Event | None = None):
+        if config.preparation:
+            require(config.review and config.review.get('status')=='passed', 'Semantic review required before acting')
         self.config = config
         self.adapters = adapters
         self.cancel = cancel if cancel is not None else Event()
@@ -70,11 +72,15 @@ class Engine:
         selected = {o.id: o for o in self.observations[-24:]}
         selected.update({o.id: o for o in self.observations if o.id in new_external})
         evidence = (Observation("scene", "scene", self.config.scene.given), *selected.values(), script)
+        preparation = None
+        if self.config.preparation:
+            from .preparation import for_segment
+            preparation = for_segment(self.config.preparation, self.config.execution_script, segment)
         return Context(self.config.scene, self.scene_hash, script, tuple(evidence),
                        self.plan.action if self.plan else None, self.plan.action_id if self.plan else None,
                        tuple(self.prior_views[-4:]), tuple(self.discoveries), new_external,
                        deepcopy(self.plan.performance.motor) if self.plan else None,
-                       deepcopy(self.feedback))
+                       deepcopy(self.feedback), preparation=preparation)
 
     def choose(self, context: Context, proposal: Proposal, audit: Audit):
         require(isinstance(proposal, Proposal) and isinstance(audit, Audit), "Invalid reasoner result types")
@@ -137,10 +143,10 @@ class Engine:
                 "pause_ms must be an integer in 0..10000")
         require(type(performance.breath) is bool and isinstance(performance.motor, dict)
                 and bool(performance.motor), "Generated motor controls and breath flag are required")
+        if self.config.preparation:
+            from .vocal import vocal_delivery
+            require(vocal_delivery(performance.vocal,fragment)==performance.delivery, 'Invalid structured vocal directions')
         canonical(performance)  # Reject NaN/unserializable motor states.
-        if not changed:
-            require(canonical(performance.motor) == canonical(self.plan.performance.motor),
-                    "Retained action must retain the same face/gaze target")
         action_id = f"action-{uuid.uuid4().hex[:12]}" if changed else self.plan.action_id
         plan = Plan(f"plan-{uuid.uuid4().hex}", self.scene_hash, action_id, action, changed,
                     proposal.view, deepcopy(performance))
@@ -177,12 +183,16 @@ class Engine:
         canonical(frame.controls)
         self._last_frame = frame.sample_start
 
-    def run(self, on_event=None, stimuli=None, max_seconds=300):
+    def run_streaming(self, audio_sink, on_event=None, stimuli=None, max_seconds=300, face_queue_capacity=32, face_enabled=True):
+        """Deliver PCM before independent face work; the sink owns actual playback timing."""
+        return self.run(on_event,stimuli,max_seconds,audio_sink=audio_sink,face_async=True,face_queue_capacity=face_queue_capacity,face_enabled=face_enabled)
+
+    def run(self, on_event=None, stimuli=None, max_seconds=300, *, audio_sink=None, face_async=True, face_queue_capacity=32, face_enabled=True):
         require(not self._has_run, "Create a new engine instance for each run")
         require(type(max_seconds) in (int, float) and 0 < max_seconds <= 3600, "Invalid execution limit")
         self._has_run = True
         health_records = {}
-        for role in ("reasoner", "voice", "face"):
+        for role in (("reasoner","voice","face") if face_enabled else ("reasoner","voice")):
             health = getattr(self.adapters, role).health()
             require(health.ready, f"{role}: {health.message}")
             health_records[role] = asdict(health)
@@ -199,13 +209,37 @@ class Engine:
         timer = Timer(max_seconds, self.cancel.set)
         timer.daemon = True
         timer.start()
+        consumer=None
+        frame_counts={}
+        face_reports={}
+        def render_task(task,stop=None):
+            plan,chunk,start,count,segment=task
+            for frame in self.adapters.face.render(FaceRequest(deepcopy(plan),chunk,start,deepcopy(face_reports.get(plan.id)),face_reports.get(plan.id,{}).get('audio_context')=='utterance'),self.cancel):
+                if stop and stop.is_set():return
+                self.check_cancel()
+                if time.monotonic()>=deadline:raise Cancelled("Execution time limit reached")
+                self.validate_frame(frame,plan,chunk,start,start+count)
+                suffix='.png' if frame.format=='png' else '.jpg'
+                frame_path=directory/'frames'/f'{frame.sample_start:012d}{suffix}'
+                frame_path.write_bytes(frame.image)
+                frame_counts[segment]=frame_counts.get(segment,0)+1
+                journal.emit('face.controls.receipt',plan_id=plan.id,sample_start=frame.sample_start,
+                             receipt=frame.controls,scope='backend-reported values; visual effects not verified by engine')
+                journal.emit('face.frame',plan_id=plan.id,sample_start=frame.sample_start,
+                             sample_rate=frame.sample_rate,controls=frame.controls,
+                             artifact=str(frame_path.relative_to(directory)))
+        if face_async and face_enabled:
+            from .streaming import FaceConsumer
+            consumer=FaceConsumer(render_task,self.cancel,
+                lambda task:journal.emit('face.request_dropped',plan_id=task[0].id,sample_start=task[2],
+                                         reason='visual_queue_full_audio_continues'),face_queue_capacity)
         try:
             journal.emit("run.started", scene=self.config.scene, scene_hash=self.scene_hash,
-                         adapters=health_records,
+                         adapters=health_records, preparation=self.config.preparation,
                          prepared=["scene", "script", "model weights and identity references", "adapter control rules"],
                          generated=["interpretation", "action", "delivery", "motor targets", "PCM", "frames"],
                          scope="generation/artifact clock; no playback or hard backend termination")
-            for segment, fragment in enumerate(self.config.script):
+            for segment, fragment in enumerate(self.config.execution_script):
                 self.check_cancel()
                 if time.monotonic() >= deadline:
                     raise Cancelled("Execution time limit reached")
@@ -216,7 +250,18 @@ class Engine:
                 journal.emit("script.current", segment=segment, text=fragment, kind="unspoken authored script")
                 plan = self.make_plan(fragment, segment, journal)
                 self.check_cancel()
+                if face_enabled:
+                    from .face_capabilities import inspect_motor
+                    face_report=inspect_motor(self.adapters.face,plan)
+                    journal.emit('face.controls.preflight',report=face_report)
+                    require(not face_report['unsupported'],'Unsupported face motor controls: '+', '.join(face_report['unsupported']))
+                    face_reports[plan.id]=face_report
                 request = SpeechRequest(fragment, deepcopy(plan))
+                from .capabilities import inspect_controls,control_receipt
+                report=inspect_controls(self.adapters.voice,request)
+                journal.emit('voice.controls.preflight',report=report)
+                require(not report['unsupported'],'Unsupported active voice controls: '+', '.join(report['unsupported']))
+                request=replace(request,control_report=report)
                 expected = 0
                 frames = 0
                 sum_squares = 0.0
@@ -238,23 +283,30 @@ class Engine:
                         journal.emit("audio.chunk", segment=segment, plan_id=plan.id,
                                      sample_start=start, samples=count, sample_rate=chunk.sample_rate,
                                      artifact=str(audio_path.relative_to(directory)), artifact_offset_bytes=expected * 4)
-                        face_request = FaceRequest(deepcopy(plan), chunk, start)
-                        for frame in self.adapters.face.render(face_request, self.cancel):
-                            self.check_cancel()
-                            if time.monotonic() >= deadline:
-                                raise Cancelled("Execution time limit reached")
-                            self.validate_frame(frame, plan, chunk, start, start + count)
-                            suffix = ".png" if frame.format == "png" else ".jpg"
-                            frame_path = directory / "frames" / f"{frame.sample_start:012d}{suffix}"
-                            frame_path.write_bytes(frame.image)
-                            frames += 1
-                            journal.emit("face.frame", plan_id=plan.id, sample_start=frame.sample_start,
-                                         sample_rate=frame.sample_rate, controls=frame.controls,
-                                         artifact=str(frame_path.relative_to(directory)))
+                        # The sink receives the exact PCM/common sample clock before face work.
+                        # Sink arrival is NOT evidence of device playback or heard sound.
+                        if audio_sink:
+                            audio_sink(chunk,start,self.cancel)
+                            journal.emit('audio.sink_delivered',plan_id=plan.id,sample_start=start,
+                                         samples=count,sample_rate=chunk.sample_rate,playback_verified=False)
+                        task=(deepcopy(plan),chunk,start,count,segment)
+                        if face_enabled and face_reports[plan.id]['audio_context']=='chunk':
+                            if consumer:consumer.submit(task)
+                            else:render_task(task)
                         expected += count
                         self.total_samples += count
                 require(expected > 0, "Voice produced no audio; no fallback")
-                require(frames > 0, "Face produced no frames; no stored-video fallback")
+                if face_enabled and face_reports[plan.id]['audio_context']=='utterance':
+                    require(audio_path.stat().st_size<=16*1024*1024,'Whole utterance face PCM exceeds 16 MiB limit')
+                    complete_audio=AudioChunk(plan.id,0,self.sample_rate,audio_path.read_bytes())
+                    task=(deepcopy(plan),complete_audio,phrase_start,expected,segment)
+                    journal.emit('face.utterance_ready',plan_id=plan.id,sample_start=phrase_start,samples=expected,
+                                 scope='full-utterance processing; not online face inference')
+                    if consumer:consumer.submit(task)
+                    else:render_task(task)
+                frames=frame_counts.get(segment,0)
+                if face_enabled and not consumer:require(frames > 0, "Face produced no frames; no stored-video fallback")
+                journal.emit('voice.controls.receipt',receipt=control_receipt(self.adapters.voice,request))
                 audio_path.with_suffix(".json").write_text(canonical({
                     "format": "mono-float32-little-endian", "sample_rate": self.sample_rate,
                     "samples": expected, "global_sample_start": phrase_start, "plan_id": plan.id,
@@ -262,7 +314,7 @@ class Engine:
                     "sha256": hashlib.sha256(audio_path.read_bytes()).hexdigest()}) + "\n", encoding="utf-8")
                 self.feedback = {"duration_s": expected / self.sample_rate,
                                  "rms": math.sqrt(sum_squares / expected), "samples_outside_unit_range": clipped,
-                                 "frames": frames, "scope": "technical outputs, not audience response"}
+                                 "frames": frames, "face_pending":bool(consumer), "scope": "technical outputs, not audience response"}
                 self.observations.append(Observation(f"speech:{segment}", "generated_speech", fragment))
                 self._ids.add(f"speech:{segment}")
                 journal.emit("performance.feedback", technical=self.feedback, partner_outcome="unobserved",
@@ -270,6 +322,10 @@ class Engine:
                              no_response_is_not_agreement_or_failure=True)
                 (directory / "state.json").write_text(canonical({"plan": self.plan, "scene_hash": self.scene_hash,
                      "discoveries": self.discoveries, "feedback": self.feedback}) + "\n", encoding="utf-8")
+            if consumer:
+                consumer.finish(deadline)
+                require(sum(frame_counts.values())>0,'Face produced no frames')
+                journal.emit('face.drained',frames=sum(frame_counts.values()),dropped_requests=consumer.dropped)
             journal.emit("run.completed", samples=self.total_samples, sample_rate=self.sample_rate)
             return directory
         except Exception as error:
@@ -278,4 +334,5 @@ class Engine:
             raise
         finally:
             timer.cancel()
+            if consumer:consumer.close()
             journal.close()

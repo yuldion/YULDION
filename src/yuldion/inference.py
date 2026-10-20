@@ -4,6 +4,8 @@ import os
 import math
 from urllib.parse import urlparse
 from urllib.request import Request
+from urllib.error import HTTPError, URLError
+from .errors import InferenceFailure
 
 def generate(config, messages):
     if "provider" in config:
@@ -32,7 +34,7 @@ def generate(config, messages):
         response_format = {'type':'json_schema', 'json_schema':{
             'name':'actor_response','strict':True,'schema':config['response_schema']}}
     request = Request(endpoint, data=json.dumps({'model': model, 'messages': messages,
-        'temperature': 0.2, 'max_tokens': 1800, 'response_format': response_format}).encode(), headers=headers)
+        'temperature': 0.2, 'max_tokens': config.get('max_output_tokens',1800), 'response_format': response_format}).encode(), headers=headers)
     # No redirects: never forward an authorization header to another host.
     from urllib.request import build_opener, HTTPRedirectHandler, ProxyHandler
     class NoRedirect(HTTPRedirectHandler):
@@ -40,8 +42,19 @@ def generate(config, messages):
             return None
     handlers=[NoRedirect()]
     if config.get('provider')=='local':handlers.insert(0,ProxyHandler({}))
-    with build_opener(*handlers).open(request, timeout=timeout) as response:
-        raw = response.read(1024 * 1024 + 1)
+    try:
+        with build_opener(*handlers).open(request, timeout=timeout) as response:
+            raw = response.read(1024 * 1024 + 1)
+    except HTTPError as error:
+        retry=None
+        try:retry=max(0,min(300,float(error.headers.get('Retry-After',''))))
+        except (ValueError,TypeError,AttributeError):pass
+        error.close()
+        raise InferenceFailure('http',error.code,retry) from None
+    except TimeoutError:
+        raise InferenceFailure('timeout') from None
+    except URLError as error:
+        raise InferenceFailure('timeout' if isinstance(error.reason,TimeoutError) else 'connection') from None
     if len(raw) > 1024 * 1024:
         raise ValueError('Model response too large')
     packet = json.loads(raw)
